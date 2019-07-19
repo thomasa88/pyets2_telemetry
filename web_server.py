@@ -206,6 +206,11 @@ class SignalrHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
         return
 
+    def translate_path(self, path):
+        if not path.startswith('/signalr'):
+            path = '/Html' + path
+        return super().translate_path(path)
+
     def do_GET(self):
         if not self.do_signalr():
             super().do_GET()
