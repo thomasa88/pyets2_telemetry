@@ -1,43 +1,9 @@
 import logging
 import threading
-#import queue
 
 import telemetry
 import web_server
-
-SCS_TELEMETRY_CHANNEL_game_time = "game.time"
-SCS_TELEMETRY_TRUCK_CHANNEL_speed = "truck.speed"
-
-SCS_RESULT_ok                        =  0
-SCS_RESULT_unsupported               = -1
-SCS_RESULT_invalid_parameter         = -2
-SCS_RESULT_already_registered        = -3
-SCS_RESULT_not_found                 = -4
-SCS_RESULT_unsupported_type          = -5
-SCS_RESULT_not_now                   = -6
-SCS_RESULT_generic_error             = -7
-
-SCS_TELEMETRY_CHANNEL_FLAG_none         = 0x00000000
-SCS_TELEMETRY_CHANNEL_FLAG_each_frame   = 0x00000001
-SCS_TELEMETRY_CHANNEL_FLAG_no_value     = 0x00000002
-
-# Index
-SCS_U32_NIL = -1
-
-SCS_VALUE_TYPE_INVALID           = 0
-SCS_VALUE_TYPE_bool              = 1
-SCS_VALUE_TYPE_s32               = 2
-SCS_VALUE_TYPE_u32               = 3
-SCS_VALUE_TYPE_u64               = 4
-SCS_VALUE_TYPE_float             = 5
-SCS_VALUE_TYPE_double            = 6
-SCS_VALUE_TYPE_fvector           = 7
-SCS_VALUE_TYPE_dvector           = 8
-SCS_VALUE_TYPE_euler             = 9
-SCS_VALUE_TYPE_fplacement        = 10
-SCS_VALUE_TYPE_dplacement        = 11
-SCS_VALUE_TYPE_string            = 12
-SCS_VALUE_TYPE_s64               = 13
+from scs_defs import *
 
 server_ = None
 server_thread_ = None
@@ -58,24 +24,45 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 logger.addHandler(TelemetryLogHandler())
 
-def channel_cb(name, index, value, context):
-    with shared_data_['condition']:
-        shared_data_['new_data'] = True
-        if name == SCS_TELEMETRY_TRUCK_CHANNEL_speed:
-            shared_data_['telemetry_data']['truck']['speed'] = mps_to_kph(value)
-            shared_data_['condition'].notify()
-
 def telemetry_init(version, game_name, game_id, game_version):
     init_shared_data()
-    ret = telemetry.register_for_channel(SCS_TELEMETRY_TRUCK_CHANNEL_speed,
-                                         SCS_U32_NIL,
-                                         SCS_VALUE_TYPE_float,
-                                         SCS_TELEMETRY_CHANNEL_FLAG_none,
-                                         channel_cb, None)
-    if ret != SCS_RESULT_ok:
-        raise Exception("Failed to register to channel: %d" % ret)
+    for i, channel in enumerate(SCS_CHANNELS):
+        if not channel.json_name:
+            continue
+        if channel.indexed:
+            index = 0
+        else:
+            index = None
+        register_for_channel(channel, i, index)
     start_server()
 
+def register_for_channel(channel, context, index=None):
+    if index is None:
+        scs_index = SCS_U32_NIL
+    else:
+        scs_index = index
+    ret = telemetry.register_for_channel(channel.name,
+                                         scs_index,
+                                         channel.type,
+                                         SCS_TELEMETRY_CHANNEL_FLAG_none,
+                                         channel_cb, context)
+    if ret != SCS_RESULT_ok:
+        raise Exception("Failed to register to channel \"%s\": %d" %
+                        (channel.name, ret))
+
+def channel_cb(name, index, value, context):
+    channel = SCS_CHANNELS[context]
+    with shared_data_['condition']:
+        shared_data_['new_data'] = True
+        if not isinstance(channel.json_name[0], list):
+            if name == SCS_TELEMETRY_TRUCK_CHANNEL_speed:
+                logging.info("CB: %f %s %s", value, repr(channel), channel.json_name[0], channel.json_name[1])
+            shared_data_['telemetry_data'][channel.json_name[0]][channel.json_name[1]] = channel.conversion_func(value)
+        else:
+            for i in range(0, len(channel.json_name)):
+                shared_data_['telemetry_data'][channel.json_name[i][0]][channel.json_name[i][1]] = channel.conversion_func[i](value)
+        shared_data_['condition'].notify()
+   
 def start_server():
     global server_, server_thread_
     server_ = web_server.SignalrHttpServer(shared_data_)
@@ -100,9 +87,6 @@ def stop_server():
     server_.server_close()
     telemetry.log("Stopped server")
 
-def mps_to_kph(mps):
-    return 3.6 * mps
-
 def init_shared_data():
     shared_data_['new_data'] = True
     shared_data_['telemetry_data'] = {
@@ -116,9 +100,9 @@ def init_shared_data():
             'telemetryPluginVersion': '4'
         },
         'truck': {
-            'id': 'man',
-            'make': 'MAN',
-            'model': 'TGX',
+            'id': 'man', # Probably config for truck! with correct config attribute!
+            'make': 'MAN', #?
+            'model': 'TGX', #?
             'speed': 0.0,
             'cruiseControlSpeed': 0.0,
             'cruiseControlOn': False,
@@ -140,8 +124,8 @@ def init_shared_data():
             'wearCabin': 0.0,
             'wearChassis': 0.0,
             'wearWheels': 0.0,
-            'userSteer': 0.0,
-            'userThrottle': 1.0,
+            'userSteer': 0.0, # wheel + input steering. scale wheel *4
+            'userThrottle': 1.0, # wheel + input
             'userBrake': 0.0,
             'userClutch': 0.0,
             'gameSteer': 0.0,
@@ -159,7 +143,7 @@ def init_shared_data():
             'brakeTemperature': 0.0,
             'adblue': 0.0,
             'adblueCapacity': 0.0,
-            'adblueAverageConsumpton': 0.0,
+            'adblueAverageConsumption': 0.0,
             'adblueWarningOn': False,
             'airPressure': 0.0,
             'airPressureWarningOn': False,
@@ -221,8 +205,8 @@ def init_shared_data():
         },
         'trailer': {
             'attached': False,
-            'id': 'derrick',
-            'name': 'derrick',
+            'id': 'derrick', #?
+            'name': 'derrick', #?
             'mass': 22000.0,
             'wear': 0.0,
             'placement': {
@@ -237,14 +221,14 @@ def init_shared_data():
         'job': {
             'income': 0,
             'deadlineTime': '0001-01-09T03: 34: 00Z',
-            'remainingTime': '0001-01-01T06: 25: 00Z',
-            'sourceCity': 'Linz',
-            'sourceCompany': 'DPD',
-            'destinationCity': 'Salzburg',
-            'destinationCompany': 'JCB'
+            'remainingTime': '0001-01-01T06: 25: 00Z', # delivery_time - game_time
+            'sourceCity': '<sourceCity>',
+            'sourceCompany': '<sourceCompany>',
+            'destinationCity': '<destinationCity>',
+            'destinationCompany': '<destinationCompany>'
         },
         'navigation': {
-            'estimatedTime': '0001-01-01T03: 01: 40Z',
+            'estimatedTime': '0001-01-01T03: 01: 40Z', # navigation_time + game_time?
             'estimatedDistance': 0,
             'speedLimit': 90
         }

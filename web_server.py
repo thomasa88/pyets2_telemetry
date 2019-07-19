@@ -171,7 +171,6 @@ class SignalrHandler(http.server.SimpleHTTPRequestHandler):
                 resp = { 'I': id,
                          'R': shared_data['telemetry_data'] }
                 resp_json = json.dumps(resp)
-            
             self.write_response(resp_json)
         else:
             processed = False
@@ -214,6 +213,7 @@ class SignalrHttpServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
         def handler(*args):
             return SignalrHandler(shared_data, self.stop_event_, *args)
         super().__init__(('', SignalrHttpServer.PORT_NUMBER), handler)
+        self.socket.settimeout(12)
 
     def collect_skins(self):
         global config_json
