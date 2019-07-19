@@ -4,6 +4,7 @@
 # https://blog.3d-logic.com/2015/03/29/signalr-on-the-wire-an-informal-description-of-the-signalr-protocol/
 # http://www.mithril.com.au/SignalR%20Protocol.docx (old protocol version)
 
+import http
 import http.server
 import json
 import socketserver
@@ -241,8 +242,11 @@ class SignalrHandler(http.server.SimpleHTTPRequestHandler):
             self.read_data()
             self.write_response(start_json)
         elif self.path.startswith('/signalr/connect'):
-            self.read_data()
-            self.write_response(connect_json)
+            if 'transport=longPolling' in self.path:
+                self.write_response(connect_json)
+            else:
+                # TODO: Correct response code?
+                self.write_response('', code=http.HTTPStatus.BAD_REQUEST)
         elif self.path.startswith('/signalr/reconnect'):
             self.read_data()
             self.write_response(reconnect_json)
@@ -295,9 +299,9 @@ class SignalrHandler(http.server.SimpleHTTPRequestHandler):
             utf8_data = self.rfile.read(int(length))
             return utf8_data.decode('utf-8')
 
-    def write_response(self, data):
+    def write_response(self, data, code=http.HTTPStatus.OK):
         utf8_data = data.encode('utf-8')
-        self.send_response(200)
+        self.send_response(code)
         self.send_header('Content-type', 'application/json; charset=UTF-8')
         self.send_header('Connection', 'keep-alive')
         self.send_header('Content-Length', len(utf8_data))
