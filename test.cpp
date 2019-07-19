@@ -1,5 +1,7 @@
 #include <iostream>
 
+#include <unistd.h>
+
 #include "scssdk_telemetry.h"
 #include "eurotrucks2/scssdk_eut2.h"
 #include "eurotrucks2/scssdk_telemetry_eut2.h"
@@ -46,6 +48,8 @@ static void load() {
     }
     
     if (result == SCS_RESULT_ok) {
+        std::cout << "RUNNING. Press enter to continue."; std::cin.get();
+//        sleep(10);
         scs_telemetry_shutdown();
     }
 }

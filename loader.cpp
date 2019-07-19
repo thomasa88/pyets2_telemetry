@@ -19,6 +19,7 @@
 static scs_log_t scs_log = nullptr;
 static scs_telemetry_register_for_channel_t scs_register_for_channel = nullptr;
 static PyObject *py_module = nullptr;
+static PyThreadState *py_thread_state_ = nullptr;
 
 struct cb_context {
     PyObject *py_callback;
@@ -114,6 +115,7 @@ bool try_call_function(const char *name) {
 // telemetry Python module
 
 SCSAPI_VOID telemetry_channel_cb(const scs_string_t name, const scs_u32_t index, const scs_value_t *const value, const scs_context_t context) {
+    PyEval_RestoreThread(py_thread_state_);
     cb_context *context_val = static_cast<cb_context*>(context);
     PyObject *py_value = Py_None;
     // value will be NULL if user has set SCS_TELEMETRY_CHANNEL_FLAG_no_value
@@ -134,6 +136,15 @@ SCSAPI_VOID telemetry_channel_cb(const scs_string_t name, const scs_u32_t index,
             case SCS_VALUE_TYPE_u64:
                 py_value = PyLong_FromUnsignedLong(value->value_u64.value);
                 break;
+            case SCS_VALUE_TYPE_float:
+                py_value = PyFloat_FromDouble(value->value_float.value);
+                break;
+            case SCS_VALUE_TYPE_double:
+                py_value = PyFloat_FromDouble(value->value_double.value);
+                break;
+            case SCS_VALUE_TYPE_string:
+                py_value = PyUnicode_FromString(value->value_string.value);
+                break;
                 // TODO: More types
                 //default:
                 // Keep None-value
@@ -141,6 +152,7 @@ SCSAPI_VOID telemetry_channel_cb(const scs_string_t name, const scs_u32_t index,
         }
     }
     pyhelp::try_call_function(context_val->py_callback, "sIOO", name, index, py_value, context_val->py_context);
+    py_thread_state_ = PyEval_SaveThread();
 }
 
 namespace pymod {
@@ -217,6 +229,7 @@ SCSAPI_RESULT scs_telemetry_init(const scs_u32_t version, const scs_telemetry_in
     PyImport_AppendInittab("telemetry", &pymod::create);
     
     Py_Initialize();
+    PyEval_InitThreads();
 
     std::string python_module_name = "pyets2_telemetry";
     PyObject *py_module_name = PyUnicode_DecodeFSDefaultAndSize(python_module_name.c_str(), python_module_name.size());
@@ -244,11 +257,18 @@ SCSAPI_RESULT scs_telemetry_init(const scs_u32_t version, const scs_telemetry_in
                               version_params->common.game_name,
                               version_params->common.game_id,
                               version_params->common.game_version);
+
+    py_thread_state_ = PyEval_SaveThread();
+
     return SCS_RESULT_ok;
 }
 
 SCSAPI_VOID scs_telemetry_shutdown() {
+    PyEval_RestoreThread(py_thread_state_);
+
+    log_loader("Call telemetry_shutdown");
     pyhelp::try_call_function("telemetry_shutdown");
+
     log_loader("Unloading");
 
     // Not doing DECREF of the callback Python objects, but
