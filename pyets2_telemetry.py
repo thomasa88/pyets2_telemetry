@@ -1,15 +1,23 @@
 import logging
 import threading
+from datetime import datetime, timedelta
 
 import telemetry
 import web_server
 from scs_defs import *
 
+# From ETS2 Telemetry Server
+TELEMETRY_PLUGIN_VERSION = '4'
+
+GAME_TIME_BASE = datetime(1, 1, 1)
+
 server_ = None
 server_thread_ = None
+game_time_ = GAME_TIME_BASE
 
 # NOTE: new_data indicator only works well with 1 client.
-# Need to track connection/session ids to handle multiple clients.
+# Need to track connection/session ids to handle multiple clients
+# and call notify_all().
 shared_data_ = {
     'condition': threading.Condition(),
     'telemetry_data': {},
@@ -28,14 +36,14 @@ logger.addHandler(TelemetryLogHandler())
 
 def telemetry_init(version, game_name, game_id, game_version):
     init_shared_data()
-    for i, channel in enumerate(SCS_CHANNELS):
-        if not channel.json_name:
+    for channel in SCS_CHANNELS:
+        if not hasattr(channel, 'json_path'):
             continue
         if channel.indexed:
             index = 0
         else:
             index = None
-        register_for_channel(channel, i, index)
+        register_for_channel(channel, channel.internal_id, index)
     start_server()
 
 def register_for_channel(channel, context, index=None):
@@ -53,16 +61,30 @@ def register_for_channel(channel, context, index=None):
                         (channel.name, ret))
 
 def channel_cb(name, index, value, context):
+    global game_time_
+    
     channel = SCS_CHANNELS[context]
+
     with shared_data_['condition']:
+        def set_value(json0, json1, value):
+            shared_data_['telemetry_data'][json0][json1] = value
+
+        # # Optimize this?
+        if channel == SCS_TELEMETRY_CHANNEL_game_time:
+            game_time_ = GAME_TIME_BASE + timedelta(minutes=value)
+        elif channel == SCS_TELEMETRY_TRUCK_CHANNEL_dashboard_backlight:
+            set_value('truck', 'lightsDashboardOn', value > 0)
+        elif channel == SCS_TELEMETRY_TRUCK_CHANNEL_cruise_control:
+            set_value('truck', 'cruiseControlOn', value > 0)
+
+        if hasattr(channel, 'conv_func'):
+            value = channel.conv_func(value)
+
+        if isinstance(value, datetime):
+            value = value.isoformat(timespec='seconds')+'Z'
+
+        set_value(channel.json_path[0], channel.json_path[1], value)
         shared_data_['new_data'] = True
-        if not isinstance(channel.json_name[0], list):
-            if name == SCS_TELEMETRY_TRUCK_CHANNEL_speed:
-                logging.info("CB: %f %s %s", value, repr(channel), channel.json_name[0], channel.json_name[1])
-            shared_data_['telemetry_data'][channel.json_name[0]][channel.json_name[1]] = channel.conversion_func(value)
-        else:
-            for i in range(0, len(channel.json_name)):
-                shared_data_['telemetry_data'][channel.json_name[i][0]][channel.json_name[i][1]] = channel.conversion_func[i](value)
         shared_data_['condition'].notify()
    
 def start_server():
@@ -99,7 +121,7 @@ def init_shared_data():
             'timeScale': 19.0,
             'nextRestStopTime': '0001-01-01T10: 11: 00Z',
             'version': '1.10',
-            'telemetryPluginVersion': '4'
+            'telemetryPluginVersion': TELEMETRY_PLUGIN_VERSION
         },
         'truck': {
             'id': 'man', # Probably config for truck! with correct config attribute!
@@ -230,8 +252,90 @@ def init_shared_data():
             'destinationCompany': '<destinationCompany>'
         },
         'navigation': {
-            'estimatedTime': '0001-01-01T03: 01: 40Z', # navigation_time + game_time?
+            'estimatedTime': '0001-01-01T03: 01: 40Z',
             'estimatedDistance': 0,
             'speedLimit': 90
         }
     }
+
+# Value conversion functions
+def mps_to_kph(mps):
+    return round(3.6 * mps)
+
+def non_zero(value):
+    return value != 0
+    
+# JSON mapping
+SCS_TELEMETRY_CHANNEL_game_time.json_path = ['game', 'time']
+SCS_TELEMETRY_CHANNEL_game_time.conv_func = lambda v: game_time_
+SCS_TELEMETRY_CHANNEL_local_scale.json_path = ['game', 'timeScale']
+SCS_TELEMETRY_CHANNEL_next_rest_stop.json_path = ['game', 'nextRestStopTime']
+SCS_TELEMETRY_CHANNEL_next_rest_stop.conv_func = lambda v: game_time_ + timedelta(minutes=v)
+SCS_TELEMETRY_TRAILER_CHANNEL_connected.json_path = ['trailer', 'attached']
+SCS_TELEMETRY_TRAILER_CHANNEL_wear_chassis.json_path = ['trailer', 'wear']
+SCS_TELEMETRY_TRAILER_CHANNEL_world_placement.json_path = ['trailer', 'placement']
+# Only available for certain truck CONFIG?
+#SCS_TELEMETRY_TRUCK_CHANNEL_adblue_average_consumption.json_path = ['truck', 'adblueAverageConsumption']
+SCS_TELEMETRY_TRUCK_CHANNEL_adblue.json_path = ['truck', 'adblue']
+SCS_TELEMETRY_TRUCK_CHANNEL_adblue_warning.json_path = ['truck', 'adblueWarningOn']
+SCS_TELEMETRY_TRUCK_CHANNEL_battery_voltage.json_path = ['truck', 'batteryVoltage']
+SCS_TELEMETRY_TRUCK_CHANNEL_battery_voltage_warning.json_path = ['truck', 'batteryVoltageWarningOn']
+SCS_TELEMETRY_TRUCK_CHANNEL_brake_air_pressure_emergency.json_path = ['truck', 'airPressureEmergencyOn']
+SCS_TELEMETRY_TRUCK_CHANNEL_brake_air_pressure.json_path = ['truck', 'airPressure']
+SCS_TELEMETRY_TRUCK_CHANNEL_brake_air_pressure_warning.json_path = ['truck', 'airPressureWarningOn']
+SCS_TELEMETRY_TRUCK_CHANNEL_brake_temperature.json_path = ['truck', 'brakeTemperature']
+SCS_TELEMETRY_TRUCK_CHANNEL_cruise_control.json_path = ['truck', 'cruiseControlSpeed']
+SCS_TELEMETRY_TRUCK_CHANNEL_cruise_control.conv_func = mps_to_kph
+SCS_TELEMETRY_TRUCK_CHANNEL_dashboard_backlight.json_path = ['truck', 'lightsDashboardValue']
+SCS_TELEMETRY_TRUCK_CHANNEL_displayed_gear.json_path = ['truck', 'displayedGear']
+SCS_TELEMETRY_TRUCK_CHANNEL_effective_brake.json_path = ['truck', 'gameBrake']
+SCS_TELEMETRY_TRUCK_CHANNEL_effective_clutch.json_path = ['truck', 'gameClutch']
+SCS_TELEMETRY_TRUCK_CHANNEL_effective_steering.json_path = ['truck', 'gameSteer']
+SCS_TELEMETRY_TRUCK_CHANNEL_effective_throttle.json_path = ['truck', 'gameThrottle']
+SCS_TELEMETRY_TRUCK_CHANNEL_electric_enabled.json_path = ['truck', 'electricOn']
+SCS_TELEMETRY_TRUCK_CHANNEL_engine_enabled.json_path = ['truck', 'engineOn']
+SCS_TELEMETRY_TRUCK_CHANNEL_engine_gear.json_path = ['truck', 'gear']
+SCS_TELEMETRY_TRUCK_CHANNEL_engine_rpm.json_path = ['truck', 'engineRpm']
+SCS_TELEMETRY_TRUCK_CHANNEL_fuel_average_consumption.json_path = ['truck', 'fuelAverageConsumption']
+SCS_TELEMETRY_TRUCK_CHANNEL_fuel.json_path = ['truck', 'fuel']
+SCS_TELEMETRY_TRUCK_CHANNEL_fuel_warning.json_path = ['truck', 'fuelWarningOn']
+SCS_TELEMETRY_TRUCK_CHANNEL_hshifter_slot.json_path = ['truck', 'shifterSlot']
+SCS_TELEMETRY_TRUCK_CHANNEL_lblinker.json_path = ['truck', 'blinkerLeftOn']
+SCS_TELEMETRY_TRUCK_CHANNEL_light_aux_front.json_path = ['truck', 'lightsAuxFrontOn']
+SCS_TELEMETRY_TRUCK_CHANNEL_light_aux_front.conv_func = non_zero
+SCS_TELEMETRY_TRUCK_CHANNEL_light_aux_roof.json_path = ['truck', 'lightsAuxRoofOn']
+SCS_TELEMETRY_TRUCK_CHANNEL_light_aux_roof.conv_func = non_zero
+SCS_TELEMETRY_TRUCK_CHANNEL_light_beacon.json_path = ['truck', 'lightsBeaconOn']
+SCS_TELEMETRY_TRUCK_CHANNEL_light_brake.json_path = ['truck', 'lightsBrakeOn']
+SCS_TELEMETRY_TRUCK_CHANNEL_light_high_beam.json_path = ['truck', 'lightsBeamHighOn']
+SCS_TELEMETRY_TRUCK_CHANNEL_light_lblinker.json_path = ['truck', 'blinkerLeftActive']
+SCS_TELEMETRY_TRUCK_CHANNEL_light_low_beam.json_path = ['truck', 'lightsBeamLowOn']
+SCS_TELEMETRY_TRUCK_CHANNEL_light_parking.json_path = ['truck', 'lightsParkingOn']
+SCS_TELEMETRY_TRUCK_CHANNEL_light_rblinker.json_path = ['truck', 'blinkerRightActive']
+SCS_TELEMETRY_TRUCK_CHANNEL_light_reverse.json_path = ['truck', 'lightsReverseOn']
+SCS_TELEMETRY_TRUCK_CHANNEL_local_linear_acceleration.json_path = ['truck', 'acceleration']
+SCS_TELEMETRY_TRUCK_CHANNEL_motor_brake.json_path = ['truck', 'motorBrakeOn']
+SCS_TELEMETRY_TRUCK_CHANNEL_navigation_distance.json_path = ['navigation', 'estimatedDistance']
+SCS_TELEMETRY_TRUCK_CHANNEL_navigation_distance.conv_func = round
+SCS_TELEMETRY_TRUCK_CHANNEL_navigation_speed_limit.json_path = ['navigation', 'speedLimit']
+SCS_TELEMETRY_TRUCK_CHANNEL_navigation_speed_limit.conv_func = mps_to_kph
+SCS_TELEMETRY_TRUCK_CHANNEL_navigation_time.json_path = ['navigation', 'estimatedTime']
+SCS_TELEMETRY_TRUCK_CHANNEL_navigation_time.conv_func = lambda v: game_time_ + timedelta(seconds=v)
+SCS_TELEMETRY_TRUCK_CHANNEL_odometer.json_path = ['truck', 'odometer']
+SCS_TELEMETRY_TRUCK_CHANNEL_oil_pressure.json_path = ['truck', 'oilPressure']
+SCS_TELEMETRY_TRUCK_CHANNEL_oil_pressure_warning.json_path = ['truck', 'oilPressureWarningOn']
+SCS_TELEMETRY_TRUCK_CHANNEL_oil_temperature.json_path = ['truck', 'oilTemperature']
+SCS_TELEMETRY_TRUCK_CHANNEL_parking_brake.json_path = ['truck', 'parkBrakeOn']
+SCS_TELEMETRY_TRUCK_CHANNEL_rblinker.json_path = ['truck', 'blinkerRightOn']
+SCS_TELEMETRY_TRUCK_CHANNEL_retarder_level.json_path = ['truck', 'retarderBrake']
+SCS_TELEMETRY_TRUCK_CHANNEL_speed.json_path = ['truck', 'speed']
+SCS_TELEMETRY_TRUCK_CHANNEL_speed.conv_func = mps_to_kph
+SCS_TELEMETRY_TRUCK_CHANNEL_water_temperature.json_path = ['truck', 'waterTemperature']
+SCS_TELEMETRY_TRUCK_CHANNEL_water_temperature_warning.json_path = ['truck', 'waterTemperatureWarningOn']
+SCS_TELEMETRY_TRUCK_CHANNEL_wear_cabin.json_path = ['truck', 'wearCabin']
+SCS_TELEMETRY_TRUCK_CHANNEL_wear_chassis.json_path = ['truck', 'wearChassis']
+SCS_TELEMETRY_TRUCK_CHANNEL_wear_engine.json_path = ['truck', 'wearEngine']
+SCS_TELEMETRY_TRUCK_CHANNEL_wear_transmission.json_path = ['truck', 'wearTransmission']
+SCS_TELEMETRY_TRUCK_CHANNEL_wear_wheels.json_path = ['truck', 'wearWheels']
+SCS_TELEMETRY_TRUCK_CHANNEL_wipers.json_path = ['truck', 'wipersOn']
+SCS_TELEMETRY_TRUCK_CHANNEL_world_placement.json_path = ['truck', 'placement']
