@@ -84,6 +84,7 @@ SCS_TELEMETRY_TRAILER_CHANNEL_wheel_substance = ScsChannel('trailer.wheel.substa
 SCS_TELEMETRY_TRAILER_CHANNEL_wheel_susp_deflection = ScsChannel('trailer.wheel.suspension.deflection', SCS_VALUE_TYPE_float, False)
 SCS_TELEMETRY_TRAILER_CHANNEL_wheel_velocity = ScsChannel('trailer.wheel.angular_velocity', SCS_VALUE_TYPE_fvector, False)
 SCS_TELEMETRY_TRAILER_CHANNEL_world_placement = ScsChannel('trailer.world.placement', SCS_VALUE_TYPE_dplacement, False)
+# Not available? Getting SCS_RESULT_not_found
 #SCS_TELEMETRY_TRUCK_CHANNEL_adblue_average_consumption = ScsChannel('truck.adblue.consumption.average', SCS_VALUE_TYPE_float, False)
 SCS_TELEMETRY_TRUCK_CHANNEL_adblue = ScsChannel('truck.adblue', SCS_VALUE_TYPE_float, False)
 SCS_TELEMETRY_TRUCK_CHANNEL_adblue_warning = ScsChannel('truck.adblue.warning', SCS_VALUE_TYPE_bool, False)

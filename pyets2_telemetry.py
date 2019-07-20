@@ -476,7 +476,7 @@ SCS_TELEMETRY_TRAILER_CHANNEL_connected.json_path = ('trailer', 'attached')
 SCS_TELEMETRY_TRAILER_CHANNEL_wear_chassis.json_path = ('trailer', 'wear')
 SCS_TELEMETRY_TRAILER_CHANNEL_world_placement.json_path = ('trailer', 'placement')
 SCS_TELEMETRY_TRAILER_CHANNEL_world_placement.conv_func = flatten_placement
-# Only available for certain truck CONFIG?
+# Not available? Getting SCS_RESULT_not_found
 #SCS_TELEMETRY_TRUCK_CHANNEL_adblue_average_consumption.json_path = ('truck', 'adblueAverageConsumption')
 SCS_TELEMETRY_TRUCK_CHANNEL_adblue.json_path = ('truck', 'adblue')
 SCS_TELEMETRY_TRUCK_CHANNEL_adblue_warning.json_path = ('truck', 'adblueWarningOn')
@@ -562,7 +562,7 @@ CONFIG_EVENT_MAP = {
     SCS_TELEMETRY_CONFIG_truck: {
         SCS_TELEMETRY_CONFIG_ATTRIBUTE_adblue_capacity: ('truck', 'adblueCapacity'),
         SCS_TELEMETRY_CONFIG_ATTRIBUTE_air_pressure_emergency: ('truck', 'airPressureEmergencyValue'),
-        SCS_TELEMETRY_CONFIG_ATTRIBUTE_air_pressure_warning: ('truck', 'AirPressureWarningValue'),
+        SCS_TELEMETRY_CONFIG_ATTRIBUTE_air_pressure_warning: ('truck', 'airPressureWarningValue'),
         SCS_TELEMETRY_CONFIG_ATTRIBUTE_battery_voltage_warning: ('truck', 'batteryVoltageWarningValue'),
         SCS_TELEMETRY_CONFIG_ATTRIBUTE_brand: ('truck', 'make'),
         SCS_TELEMETRY_CONFIG_ATTRIBUTE_brand_id: ('truck', 'id'),
@@ -580,10 +580,3 @@ CONFIG_EVENT_MAP = {
         SCS_TELEMETRY_CONFIG_ATTRIBUTE_water_temperature_warning: ('truck', 'waterTemperatureWarningValue'),
     }
 }
-
-# Missing
-#userSteer
-#shifterSlot
-#adblueAverageConsumption
-#AirPressureWarningValue
-# Good defaults
