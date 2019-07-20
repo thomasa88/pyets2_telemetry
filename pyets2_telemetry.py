@@ -8,6 +8,8 @@ from scs_defs import *
 server_ = None
 server_thread_ = None
 
+# NOTE: new_data indicator only works well with 1 client.
+# Need to track connection/session ids to handle multiple clients.
 shared_data_ = {
     'condition': threading.Condition(),
     'telemetry_data': {},

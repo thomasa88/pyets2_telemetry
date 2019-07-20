@@ -131,7 +131,7 @@ class SignalrHandler(http.server.SimpleHTTPRequestHandler):
                 # wait() can release early, but we don't know how much
                 # time that has passed, so we continue, to avoid waiting
                 # too long before sending a keep-alive to the client.
-                if not shared_data['new_data']:
+                if not shared_data['new_data'] and not self.stop_event_.is_set():
                     shared_data['condition'].wait(10.0)
                 if shared_data['new_data']: # or True: #HACK. always take data
                     shared_data['new_data'] = False
@@ -209,11 +209,13 @@ class SignalrHttpServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
         self.stop_event_ = threading.Event()
         self.shared_data_ = shared_data
         self.collect_skins()
+
+        # Make sure code does not get stuck in blocking read when trying to exit
+        socket.setdefaulttimeout(1)
         
         def handler(*args):
             return SignalrHandler(shared_data, self.stop_event_, *args)
         super().__init__(('', SignalrHttpServer.PORT_NUMBER), handler)
-        self.socket.settimeout(12)
 
     def collect_skins(self):
         global config_json
@@ -238,18 +240,10 @@ class SignalrHttpServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     def shutdown(self):
         # Stop accepting new connections
         super().shutdown()
+
         # Make sure existing connections tear down
         self.stop_event_.set()
         # Cancel the polling, to avoid blocking
         with self.shared_data_['condition']:
-            self.shared_data_['condition'].notify()
+            self.shared_data_['condition'].notify_all()
 
-
-
-#server = SignalrHttpServer()
-#print('Started server on port', server.PORT_NUMBER)
-
-#server.serve_forever()
-
-# # Clean-up
-# server.server_close()
