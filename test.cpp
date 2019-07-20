@@ -13,21 +13,35 @@ static void log(const scs_log_type_t type, const scs_string_t message) {
     std::cout << "LOG: " << message << std::endl;
 }
 
-static std::string cb_name_;
-static scs_u32_t cb_index_;
-static scs_value_type_t cb_type_;
-static scs_telemetry_channel_callback_t cb_callback_;
-static scs_context_t cb_context_;
+static std::string channel_cb_name_;
+static scs_u32_t channel_cb_index_;
+static scs_value_type_t channel_cb_type_;
+static scs_telemetry_channel_callback_t channel_cb_callback_;
+static scs_context_t channel_cb_context_;
+
+static scs_event_t event_cb_event_;
+static scs_telemetry_event_callback_t event_cb_callback_;
+static scs_context_t event_cb_context_;
 
 static SCSAPI_RESULT register_for_channel(const scs_string_t name, const scs_u32_t index, const scs_value_type_t type, const scs_u32_t flags, const scs_telemetry_channel_callback_t callback, const scs_context_t context) {
     if (type != SCS_VALUE_TYPE_u32) {
         return 0;
     }
-    cb_name_ = name;
-    cb_index_ = index;
-    cb_type_ = type;
-    cb_callback_ = callback;
-    cb_context_ = context;
+    channel_cb_name_ = name;
+    channel_cb_index_ = index;
+    channel_cb_type_ = type;
+    channel_cb_callback_ = callback;
+    channel_cb_context_ = context;
+    return 0;
+}
+
+static SCSAPI_RESULT register_for_event(const scs_event_t event, const scs_telemetry_event_callback_t callback, const scs_context_t context) {
+    if (event != SCS_TELEMETRY_EVENT_configuration) {
+        return 0;
+    }
+    event_cb_event_ = event;
+    event_cb_callback_ = callback;
+    event_cb_context_ = context;
     return 0;
 }
 
@@ -38,16 +52,39 @@ static void load() {
     params.common.game_version = 2;
     params.common.log = log;
     params.register_for_channel = register_for_channel;
+    params.register_for_event = register_for_event;
     SCSAPI_RESULT result = scs_telemetry_init(SCS_TELEMETRY_VERSION_1_01, &params);
 
-    if (cb_callback_ != nullptr) {
-        if (cb_type_ == SCS_VALUE_TYPE_u32) {
-            std::cout << "Calling callback" << std::endl;
+    if (channel_cb_callback_ != nullptr) {
+        if (channel_cb_type_ == SCS_VALUE_TYPE_u32) {
+            std::cout << "Calling channel callback" << std::endl;
             scs_value_t value;
-            value.type = cb_type_;
+            value.type = channel_cb_type_;
             value.value_u32.value = 123;
-            cb_callback_(cb_name_.c_str(), cb_index_, &value, cb_context_);
-            cb_callback_(cb_name_.c_str(), cb_index_, &value, cb_context_);
+            channel_cb_callback_(channel_cb_name_.c_str(), channel_cb_index_, &value, channel_cb_context_);
+            channel_cb_callback_(channel_cb_name_.c_str(), channel_cb_index_, &value, channel_cb_context_);
+        }
+    }
+
+    if (event_cb_callback_ != nullptr) {
+        if (event_cb_event_ == SCS_TELEMETRY_EVENT_configuration) {
+            std::cout << "Calling event callback" << std::endl;
+            scs_telemetry_configuration_t config;
+            config.id = "config";
+            scs_named_value_t attributes[3];
+            config.attributes = attributes;
+            attributes[0].name = "attr0";
+            attributes[0].index = 0;
+            attributes[0].value.type = SCS_VALUE_TYPE_u32;
+            attributes[0].value.value_u32.value = 5;
+            attributes[1].name = "attr1";
+            attributes[1].index = 1;
+            attributes[1].value.type = SCS_VALUE_TYPE_float;
+            attributes[1].value.value_float.value = 6.3;
+            attributes[2].name = nullptr;
+            void *event_info = static_cast<void*>(&config);
+            event_cb_callback_(event_cb_event_, event_info, event_cb_context_);
+            event_cb_callback_(event_cb_event_, event_info, event_cb_context_);
         }
     }
     

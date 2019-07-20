@@ -88,8 +88,7 @@ private:
 };
 
 
-static scs_log_t scs_log_ = nullptr;
-static scs_telemetry_register_for_channel_t scs_register_for_channel_ = nullptr;
+static scs_telemetry_init_params_v101_t scs_params_;
 static PyObjRef py_module_;
 static PyThreadState *py_thread_state_ = nullptr;
 
@@ -97,13 +96,14 @@ struct cb_context {
     PyObjRef py_callback;
     PyObjRef py_context;
 };
-static std::vector<cb_context> registered_callbacks_;
+static std::vector<cb_context> registered_channels_;
+static std::vector<cb_context> registered_events_;
 
 static void log(const std::string &prefix, const char *format, va_list ap) {
     std::string buf(prefix);
     buf.resize(128);
     vsnprintf(buf.data() + prefix.size(), buf.size() - prefix.size(), format, ap);
-    scs_log_(SCS_LOG_TYPE_message, buf.c_str());
+    scs_params_.common.log(SCS_LOG_TYPE_message, buf.c_str());
 }
 
 static void log(const std::string &prefix, const char *format, ...)
@@ -184,7 +184,7 @@ bool try_call_function(const char *name) {
 // telemetry Python module
 
 template <class T>
-PyObjRef create_py_vector(const T &scs_vector) {
+static PyObjRef create_py_vector(const T &scs_vector) {
     PyObjRef py_dict(PyDict_New());
     PyDict_SetItemString(py_dict.get(), "x",
                          PyFloat_FromDouble(scs_vector.x));
@@ -195,7 +195,7 @@ PyObjRef create_py_vector(const T &scs_vector) {
     return py_dict;
 }
 
-PyObjRef create_py_euler(const scs_value_euler_t &euler) {
+static PyObjRef create_py_euler(const scs_value_euler_t &euler) {
     PyObjRef py_dict(PyDict_New());
     PyDict_SetItemString(py_dict.get(), "heading",
                          PyFloat_FromDouble(euler.heading));
@@ -206,79 +206,160 @@ PyObjRef create_py_euler(const scs_value_euler_t &euler) {
     return py_dict;
 }
 
-SCSAPI_VOID telemetry_channel_cb(const scs_string_t name, const scs_u32_t index, const scs_value_t *const value, const scs_context_t context) {
+// Returns empty PyObjRef on error
+static PyObjRef create_py_value(const scs_value_t *value) {
+    PyObjRef py_value;
+    if (value == nullptr) {
+        return py_value;
+    }
+    switch (value->type) {
+        case SCS_VALUE_TYPE_bool:
+            py_value.set(PyBool_FromLong(value->value_bool.value));
+            break;
+        case SCS_VALUE_TYPE_s32:
+            py_value.set(PyLong_FromLong(value->value_s32.value));
+            break;
+        case SCS_VALUE_TYPE_u32:
+            py_value.set(PyLong_FromUnsignedLong(value->value_u32.value));
+            break;
+        case SCS_VALUE_TYPE_s64:
+            py_value.set(PyLong_FromLong(value->value_s64.value));
+            break;
+        case SCS_VALUE_TYPE_u64:
+            py_value.set(PyLong_FromUnsignedLong(value->value_u64.value));
+            break;
+        case SCS_VALUE_TYPE_float:
+            py_value.set(PyFloat_FromDouble(value->value_float.value));
+            break;
+        case SCS_VALUE_TYPE_double:
+            py_value.set(PyFloat_FromDouble(value->value_double.value));
+            break;
+        case SCS_VALUE_TYPE_fvector:
+            py_value = create_py_vector(value->value_fvector);
+            break;
+        case SCS_VALUE_TYPE_dvector:
+            py_value = create_py_vector(value->value_dvector);
+            break;
+        case SCS_VALUE_TYPE_euler:
+            py_value = create_py_euler(value->value_euler);
+            break;
+        case SCS_VALUE_TYPE_fplacement:
+            py_value.set(PyDict_New());
+            PyDict_SetItemString(py_value.get(), "position",
+                                 create_py_vector(
+                                     value->value_fplacement.position).get());
+            PyDict_SetItemString(py_value.get(), "orientation",
+                                 create_py_euler(
+                                     value->value_fplacement.orientation).get());
+            break;
+        case SCS_VALUE_TYPE_dplacement:
+            py_value.set(PyDict_New());
+            PyDict_SetItemString(py_value.get(), "position",
+                                 create_py_vector(
+                                     value->value_fplacement.position).get());
+            PyDict_SetItemString(py_value.get(), "orientation",
+                                 create_py_euler(
+                                     value->value_fplacement.orientation).get());
+            break;
+        case SCS_VALUE_TYPE_string:
+            py_value.set(PyUnicode_FromString(value->value_string.value));
+            break;
+        default:
+            log_loader("Cannot convert SCS type: %u", value->type);
+    }
+    return py_value;
+}
+
+SCSAPI_VOID telemetry_channel_cb(const scs_string_t name,
+                                 const scs_u32_t index,
+                                 const scs_value_t *const value,
+                                 const scs_context_t context) {
     int context_index = reinterpret_cast<intptr_t>(context);
-    if (context_index >= static_cast<ssize_t>(registered_callbacks_.size())) {
-        log_loader("ERROR! context_index=%d > size()=%zu. Ignoring callback.",
-                   context_index, registered_callbacks_.size());
+    if (context_index >= static_cast<ssize_t>(registered_channels_.size())) {
+        log_loader("ERROR! Channel context_index=%d > size()=%zu. Ignoring callback.",
+                   context_index, registered_channels_.size());
         return;
     }
-    cb_context &context_val = registered_callbacks_[context_index];
+    cb_context &context_val = registered_channels_[context_index];
+    
+    PyEval_RestoreThread(py_thread_state_);
+
+    { // Make sure no PyObjRef ref counting happens after PyEval_SaveThread()
+        // value might be NULL if user has set SCS_TELEMETRY_CHANNEL_FLAG_no_value
+        PyObjRef py_value(create_py_value(value));
+        if (py_value.get() == nullptr) {
+            py_value.set(Py_None);
+        }
+        pyhelp::try_call_function(context_val.py_callback.get(), "sIOO", name, index, py_value.get(), context_val.py_context.get());
+    }
+    py_thread_state_ = PyEval_SaveThread();
+}
+
+SCSAPI_VOID telemetry_event_cb(const scs_event_t event,
+                               const void *const event_info,
+                               const scs_context_t context) {
+    int context_index = reinterpret_cast<intptr_t>(context);
+    if (context_index >= static_cast<ssize_t>(registered_events_.size())) {
+        log_loader("ERROR! Event context_index=%d > size()=%zu. Ignoring callback.",
+                   context_index, registered_events_.size());
+        return;
+    }
+    cb_context &context_val = registered_events_[context_index];
     
     PyEval_RestoreThread(py_thread_state_);
 
     { // Make sure no PyObjRef ref counting happens after PyEval_SaveThread()
         PyObjRef py_value(Py_None);
-        // value might be NULL if user has set SCS_TELEMETRY_CHANNEL_FLAG_no_value
-        if (value != nullptr) {
-            switch (value->type) {
-                case SCS_VALUE_TYPE_bool:
-                    py_value.set(PyBool_FromLong(value->value_bool.value));
-                    break;
-                case SCS_VALUE_TYPE_s32:
-                    py_value.set(PyLong_FromLong(value->value_s32.value));
-                    break;
-                case SCS_VALUE_TYPE_u32:
-                    py_value.set(PyLong_FromUnsignedLong(value->value_u32.value));
-                    break;
-                case SCS_VALUE_TYPE_s64:
-                    py_value.set(PyLong_FromLong(value->value_s64.value));
-                    break;
-                case SCS_VALUE_TYPE_u64:
-                    py_value.set(PyLong_FromUnsignedLong(value->value_u64.value));
-                    break;
-                case SCS_VALUE_TYPE_float:
-                    py_value.set(PyFloat_FromDouble(value->value_float.value));
-                    break;
-                case SCS_VALUE_TYPE_double:
-                    py_value.set(PyFloat_FromDouble(value->value_double.value));
-                    break;
-                case SCS_VALUE_TYPE_fvector:
-                    py_value = create_py_vector(value->value_fvector);
-                    break;
-                case SCS_VALUE_TYPE_dvector:
-                    py_value = create_py_vector(value->value_dvector);
-                    break;
-                case SCS_VALUE_TYPE_euler:
-                    py_value = create_py_euler(value->value_euler);
-                    break;
-                case SCS_VALUE_TYPE_fplacement:
-                    py_value.set(PyDict_New());
-                    PyDict_SetItemString(py_value.get(), "position",
-                                         create_py_vector(
-                                             value->value_fplacement.position).get());
-                    PyDict_SetItemString(py_value.get(), "orientation",
-                                         create_py_euler(
-                                             value->value_fplacement.orientation).get());
-                    break;
-                case SCS_VALUE_TYPE_dplacement:
-                    py_value.set(PyDict_New());
-                    PyDict_SetItemString(py_value.get(), "position",
-                                         create_py_vector(
-                                             value->value_fplacement.position).get());
-                    PyDict_SetItemString(py_value.get(), "orientation",
-                                         create_py_euler(
-                                             value->value_fplacement.orientation).get());
-                    break;
-                case SCS_VALUE_TYPE_string:
-                    py_value.set(PyUnicode_FromString(value->value_string.value));
-                    break;
-                    //default:
-                    // Keep None-value
-                    // TODO: Exception?
-            }
+
+        // TODO: Use custom types (PyType) instead of dicts? Config and gameplay
+        // events should not happen very often?
+        switch (event) {
+            // TODO: Implement all event types
+            // case SCS_TELEMETRY_EVENT_frame_start:
+            //     break;
+            // case SCS_TELEMETRY_EVENT_frame_end:
+            //     break;
+            case SCS_TELEMETRY_EVENT_paused:
+                // No value
+                break;
+            case SCS_TELEMETRY_EVENT_started:
+                // No value
+                break;
+            case SCS_TELEMETRY_EVENT_gameplay:
+                // Intentional fall-through. The struct layouts are the same.
+            case SCS_TELEMETRY_EVENT_configuration:
+                auto config = static_cast<const scs_telemetry_configuration_t *const>(event_info);
+                py_value.set(PyDict_New());
+                PyDict_SetItemString(py_value.get(), "id",
+                                     PyUnicode_FromString(config->id));
+                PyObjRef py_attr_list(PyList_New(0));
+                PyDict_SetItemString(py_value.get(), "attributes",
+                                     py_attr_list.get());
+                const scs_named_value_t *current_attr = config->attributes;
+                for (; current_attr->name != nullptr; ++current_attr) {
+                    PyObjRef py_attr_value(create_py_value(&current_attr->value));
+                    if (py_attr_value.get() == nullptr) {
+                        py_attr_value.set(Py_None);
+                    }
+
+                    PyObject *py_index = Py_None;
+                    if (current_attr->index != SCS_U32_NIL) {
+                        py_index = PyLong_FromUnsignedLong(current_attr->index);
+                    }
+ 
+                    PyObject *py_attr_tuple = PyTuple_Pack(
+                        3,
+                        PyUnicode_FromString(current_attr->name),
+                        py_index,
+                        py_attr_value.get());
+
+                    PyList_Append(py_attr_list.get(), py_attr_tuple);
+                }
+                break;
+                //default:
+                // Keep None-value
         }
-        pyhelp::try_call_function(context_val.py_callback.get(), "sIOO", name, index, py_value.get(), context_val.py_context.get());
+        pyhelp::try_call_function(context_val.py_callback.get(), "IOO", event, py_value.get(), context_val.py_context.get());
     }
     py_thread_state_ = PyEval_SaveThread();
 }
@@ -310,17 +391,42 @@ static PyObject *register_for_channel(PyObject *self, PyObject *args) {
     cb_context context;
     context.py_callback.set(py_callback);
     context.py_context.set(py_context);
-    auto context_it = registered_callbacks_.emplace(registered_callbacks_.end(),
+    auto context_it = registered_channels_.emplace(registered_channels_.end(),
                                                 std::move(context));
     // Cannot store pointer to element in the vector, as the vector
     // reallocates when it grows. Using index instead.
-    intptr_t context_index = context_it - registered_callbacks_.begin();
+    intptr_t context_index = context_it - registered_channels_.begin();
     SCSAPI_RESULT register_ret =
-        scs_register_for_channel_(name, index, type, flags,
-                                  telemetry_channel_cb,
-                                  reinterpret_cast<void*>(context_index));
+        scs_params_.register_for_channel(name, index, type, flags,
+                                         telemetry_channel_cb,
+                                         reinterpret_cast<void*>(context_index));
     if (register_ret != SCS_RESULT_ok) {
-        registered_callbacks_.pop_back(); 
+        registered_channels_.pop_back(); 
+    }
+    return PyLong_FromLong(register_ret);
+}
+
+static PyObject *register_for_event(PyObject *self, PyObject *args) {
+    scs_event_t event = 0;
+    PyObject *py_callback;
+    PyObject *py_context;
+    if (!PyArg_ParseTuple(args, "IOO", &event, &py_callback,
+                          &py_context)) {
+        return nullptr;
+    }
+    cb_context context;
+    context.py_callback.set(py_callback);
+    context.py_context.set(py_context);
+    auto context_it = registered_events_.emplace(registered_events_.end(),
+                                                 std::move(context));
+    // Cannot store pointer to element in the vector, as the vector
+    // reallocates when it grows. Using index instead.
+    intptr_t context_index = context_it - registered_events_.begin();
+    SCSAPI_RESULT register_ret =
+        scs_params_.register_for_event(event, telemetry_event_cb,
+                                       reinterpret_cast<void*>(context_index));
+    if (register_ret != SCS_RESULT_ok) {
+        registered_events_.pop_back(); 
     }
     return PyLong_FromLong(register_ret);
 }
@@ -330,6 +436,8 @@ static PyMethodDef methods[] = {
      "Log a message to ETS2 developer console."},
     {"register_for_channel", register_for_channel, METH_VARARGS,
      "Registers callback to be called with value of specified telemetry channel."},
+    {"register_for_event", register_for_event, METH_VARARGS,
+     "Registers callback to be called when specified event happens."},
     {NULL, NULL, 0, NULL}
 };
 
@@ -351,9 +459,9 @@ SCSAPI_RESULT scs_telemetry_init(const scs_u32_t version, const scs_telemetry_in
     if (version != SCS_TELEMETRY_VERSION_1_01) {
         return SCS_RESULT_unsupported;
     }
-    const scs_telemetry_init_params_v101_t * version_params = static_cast<const scs_telemetry_init_params_v101_t *>(params);
-    scs_log_ = version_params->common.log;
-    scs_register_for_channel_ = version_params->register_for_channel;
+    const scs_telemetry_init_params_v101_t *version_params = static_cast<const scs_telemetry_init_params_v101_t *>(params);
+    scs_params_ = *version_params;
+
     log_loader("Initializing");
 
     // Set up path so the py file can be found
@@ -391,9 +499,9 @@ SCSAPI_RESULT scs_telemetry_init(const scs_u32_t version, const scs_telemetry_in
 
         pyhelp::try_call_function("telemetry_init", "IssI",
                                   version,
-                                  version_params->common.game_name,
-                                  version_params->common.game_id,
-                                  version_params->common.game_version);
+                                  scs_params_.common.game_name,
+                                  scs_params_.common.game_id,
+                                  scs_params_.common.game_version);
     }
 
     py_thread_state_ = PyEval_SaveThread();
@@ -409,7 +517,8 @@ SCSAPI_VOID scs_telemetry_shutdown() {
 
     log_loader("Unloading");
 
-    registered_callbacks_.clear();
+    registered_channels_.clear();
+    registered_events_.clear();
     py_module_.reset();
 
     // All PyObjRef must be destroyed/reset before this point!
@@ -419,7 +528,4 @@ SCSAPI_VOID scs_telemetry_shutdown() {
     py_thread_state_ = nullptr;
 
     log_loader("Unloaded");
-
-    scs_log_ = nullptr;
-    scs_register_for_channel_ = nullptr;
 }
