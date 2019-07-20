@@ -51,6 +51,8 @@ poll_keepalive_json = json.dumps(
     {}
 )
 
+pong_json = json.dumps({ 'Response': 'pong' })
+
 class SignalrHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, shared_data, stop_event, request, client_address, server):
         self.shared_data_ = shared_data
@@ -117,6 +119,9 @@ class SignalrHandler(http.server.SimpleHTTPRequestHandler):
         elif self.path.startswith('/signalr/reconnect'):
             self.read_data()
             self.write_response(reconnect_json)
+        elif self.path.startswith('/signalr/ping'):
+            self.read_data()
+            self.write_response(pong_json)
         elif self.path.startswith('/signalr/poll'):
             data = self.read_data()
             post_data = urllib.parse.parse_qs(data)
