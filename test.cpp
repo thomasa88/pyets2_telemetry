@@ -20,6 +20,9 @@ static scs_telemetry_channel_callback_t cb_callback_;
 static scs_context_t cb_context_;
 
 static SCSAPI_RESULT register_for_channel(const scs_string_t name, const scs_u32_t index, const scs_value_type_t type, const scs_u32_t flags, const scs_telemetry_channel_callback_t callback, const scs_context_t context) {
+    if (type != SCS_VALUE_TYPE_u32) {
+        return 0;
+    }
     cb_name_ = name;
     cb_index_ = index;
     cb_type_ = type;
@@ -39,6 +42,7 @@ static void load() {
 
     if (cb_callback_ != nullptr) {
         if (cb_type_ == SCS_VALUE_TYPE_u32) {
+            std::cout << "Calling callback" << std::endl;
             scs_value_t value;
             value.type = cb_type_;
             value.value_u32.value = 123;
