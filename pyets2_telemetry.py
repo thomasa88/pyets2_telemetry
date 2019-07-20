@@ -264,6 +264,9 @@ def mps_to_kph(mps):
 
 def non_zero(value):
     return value != 0
+
+def flatten_placement(value):
+    return { **(value['position']), **(value['orientation']) }
     
 # JSON mapping
 SCS_TELEMETRY_CHANNEL_game_time.json_path = ['game', 'time']
@@ -339,3 +342,4 @@ SCS_TELEMETRY_TRUCK_CHANNEL_wear_transmission.json_path = ['truck', 'wearTransmi
 SCS_TELEMETRY_TRUCK_CHANNEL_wear_wheels.json_path = ['truck', 'wearWheels']
 SCS_TELEMETRY_TRUCK_CHANNEL_wipers.json_path = ['truck', 'wipersOn']
 SCS_TELEMETRY_TRUCK_CHANNEL_world_placement.json_path = ['truck', 'placement']
+SCS_TELEMETRY_TRUCK_CHANNEL_world_placement.conv_func = flatten_placement

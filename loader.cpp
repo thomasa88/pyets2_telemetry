@@ -27,11 +27,11 @@ public:
         inc_ref();
     }
 
-    explicit PyObjRef(const PyObjRef &other) : py_obj_(other.py_obj_) {
+    PyObjRef(const PyObjRef &other) : py_obj_(other.py_obj_) {
         inc_ref();
     }
 
-    explicit PyObjRef(PyObjRef &&other) : py_obj_(other.py_obj_) {
+    PyObjRef(PyObjRef &&other) : py_obj_(other.py_obj_) {
         other.py_obj_ = nullptr;
     }
 
@@ -183,6 +183,29 @@ bool try_call_function(const char *name) {
 
 // telemetry Python module
 
+template <class T>
+PyObjRef create_py_vector(const T &scs_vector) {
+    PyObjRef py_dict(PyDict_New());
+    PyDict_SetItemString(py_dict.get(), "x",
+                         PyFloat_FromDouble(scs_vector.x));
+    PyDict_SetItemString(py_dict.get(), "y",
+                         PyFloat_FromDouble(scs_vector.y));
+    PyDict_SetItemString(py_dict.get(), "z",
+                         PyFloat_FromDouble(scs_vector.z));
+    return py_dict;
+}
+
+PyObjRef create_py_euler(const scs_value_euler_t &euler) {
+    PyObjRef py_dict(PyDict_New());
+    PyDict_SetItemString(py_dict.get(), "heading",
+                         PyFloat_FromDouble(euler.heading));
+    PyDict_SetItemString(py_dict.get(), "pitch",
+                         PyFloat_FromDouble(euler.pitch));
+    PyDict_SetItemString(py_dict.get(), "roll",
+                         PyFloat_FromDouble(euler.roll));
+    return py_dict;
+}
+
 SCSAPI_VOID telemetry_channel_cb(const scs_string_t name, const scs_u32_t index, const scs_value_t *const value, const scs_context_t context) {
     int context_index = reinterpret_cast<intptr_t>(context);
     if (context_index >= static_cast<ssize_t>(registered_callbacks_.size())) {
@@ -220,10 +243,36 @@ SCSAPI_VOID telemetry_channel_cb(const scs_string_t name, const scs_u32_t index,
                 case SCS_VALUE_TYPE_double:
                     py_value.set(PyFloat_FromDouble(value->value_double.value));
                     break;
+                case SCS_VALUE_TYPE_fvector:
+                    py_value = create_py_vector(value->value_fvector);
+                    break;
+                case SCS_VALUE_TYPE_dvector:
+                    py_value = create_py_vector(value->value_dvector);
+                    break;
+                case SCS_VALUE_TYPE_euler:
+                    py_value = create_py_euler(value->value_euler);
+                    break;
+                case SCS_VALUE_TYPE_fplacement:
+                    py_value.set(PyDict_New());
+                    PyDict_SetItemString(py_value.get(), "position",
+                                         create_py_vector(
+                                             value->value_fplacement.position).get());
+                    PyDict_SetItemString(py_value.get(), "orientation",
+                                         create_py_euler(
+                                             value->value_fplacement.orientation).get());
+                    break;
+                case SCS_VALUE_TYPE_dplacement:
+                    py_value.set(PyDict_New());
+                    PyDict_SetItemString(py_value.get(), "position",
+                                         create_py_vector(
+                                             value->value_fplacement.position).get());
+                    PyDict_SetItemString(py_value.get(), "orientation",
+                                         create_py_euler(
+                                             value->value_fplacement.orientation).get());
+                    break;
                 case SCS_VALUE_TYPE_string:
                     py_value.set(PyUnicode_FromString(value->value_string.value));
                     break;
-                    // TODO: More types
                     //default:
                     // Keep None-value
                     // TODO: Exception?
