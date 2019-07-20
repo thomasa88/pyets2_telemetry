@@ -14,6 +14,7 @@ GAME_TIME_BASE = datetime(1, 1, 1)
 server_ = None
 server_thread_ = None
 game_time_ = GAME_TIME_BASE
+delivery_time_ = GAME_TIME_BASE
 
 # NOTE: new_data indicator only works well with 1 client.
 # Need to track connection/session ids to handle multiple clients
@@ -73,7 +74,7 @@ def register_for_channel(channel, context, index=None):
                         (channel.name, ret))
 
 def channel_cb(name, index, value, context):
-    global game_time_
+    global game_time_, delivery_time_    
     
     channel = SCS_CHANNELS[context]
 
@@ -81,6 +82,14 @@ def channel_cb(name, index, value, context):
         # # Optimize this?
         if channel == SCS_TELEMETRY_CHANNEL_game_time:
             game_time_ = GAME_TIME_BASE + timedelta(minutes=value)
+            if game_time_ > delivery_time_:
+                # Passed the deadline
+                remaining_time = timedelta(0)
+            else:
+                remaining_time = delivery_time_ - game_time_
+            set_shared_value('job', 'remainingTime',
+                             json_time(
+                                 GAME_TIME_BASE + remaining_time))
         elif channel == SCS_TELEMETRY_TRUCK_CHANNEL_dashboard_backlight:
             set_shared_value('truck', 'lightsDashboardOn', value > 0)
         elif channel == SCS_TELEMETRY_TRUCK_CHANNEL_cruise_control:
@@ -90,12 +99,13 @@ def channel_cb(name, index, value, context):
             value = channel.conv_func(value)
 
         if isinstance(value, datetime):
-            value = value.isoformat(timespec='seconds')+'Z'
+            value = json_time(value)
 
         set_shared_value(channel.json_path[0], channel.json_path[1], value)
         shared_data_notify()
 
 def event_cb(event, event_info, context):
+    global game_time_, delivery_time_
     if event == SCS_TELEMETRY_EVENT_configuration:
         with shared_data_['condition']:
             event_map = CONFIG_EVENT_MAP.get(event_info['id'])
@@ -103,6 +113,19 @@ def event_cb(event, event_info, context):
                 for name, index, value in event_info['attributes']:
                     json_path = event_map.get(name)
                     if json_path is not None:
+                        save_value = value
+                        if len(json_path) > 2:
+                            conv_func = json_path[2]
+                            value = conv_func(value)
+                            if name == SCS_TELEMETRY_CONFIG_ATTRIBUTE_delivery_time:
+                                # Remaining time will change as game time
+                                # progresses, so let's save delivery time
+                                # and calculate remaining time when game
+                                # time changes.
+                                delivery_time_ = value
+                            if isinstance(value, datetime):
+                                value = json_time(value)
+                                
                         set_shared_value(json_path[0], json_path[1], value)
             shared_data_notify()
     elif event == SCS_TELEMETRY_EVENT_started:
@@ -272,7 +295,7 @@ def init_shared_data():
         'job': {
             'income': 0,
             'deadlineTime': '0001-01-09T03: 34: 00Z',
-            'remainingTime': '0001-01-01T06: 25: 00Z', # delivery_time - game_time
+            'remainingTime': '0001-01-01T06: 25: 00Z',
             'sourceCity': '<sourceCity>',
             'sourceCompany': '<sourceCompany>',
             'destinationCity': '<destinationCity>',
@@ -430,6 +453,9 @@ def init_shared_data():
         }
     }
 
+def json_time(dt):
+    return dt.isoformat(timespec='seconds')+'Z'
+
 # Value conversion functions
 def mps_to_kph(mps):
     return round(3.6 * mps)
@@ -528,7 +554,7 @@ CONFIG_EVENT_MAP = {
         SCS_TELEMETRY_CONFIG_ATTRIBUTE_source_city: ('job', 'sourceCity'),
         SCS_TELEMETRY_CONFIG_ATTRIBUTE_source_company: ('job', 'sourceCompany'),
         SCS_TELEMETRY_CONFIG_ATTRIBUTE_income: ('job', 'income'),
-        SCS_TELEMETRY_CONFIG_ATTRIBUTE_delivery_time: ('job', 'deadlineTime'),
+        SCS_TELEMETRY_CONFIG_ATTRIBUTE_delivery_time: ('job', 'deadlineTime', lambda v: GAME_TIME_BASE + timedelta(minutes=v)),
         SCS_TELEMETRY_CONFIG_ATTRIBUTE_cargo: ('trailer', 'name'),
         SCS_TELEMETRY_CONFIG_ATTRIBUTE_cargo_id: ('trailer', 'id'),
         SCS_TELEMETRY_CONFIG_ATTRIBUTE_cargo_mass: ('trailer', 'mass'),
@@ -560,5 +586,4 @@ CONFIG_EVENT_MAP = {
 #shifterSlot
 #adblueAverageConsumption
 #AirPressureWarningValue
-#remainingTime
 # Good defaults
