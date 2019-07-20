@@ -314,7 +314,7 @@ SCSAPI_RESULT scs_telemetry_init(const scs_u32_t version, const scs_telemetry_in
     
     PyImport_AppendInittab("telemetry", &pymod::create);
     
-    Py_Initialize();
+    Py_InitializeEx(0);
     PyEval_InitThreads();
 
     { // Make sure no PyObjRef ref counting happens after PyEval_SaveThread()
