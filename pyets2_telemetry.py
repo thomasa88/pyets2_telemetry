@@ -166,26 +166,26 @@ def init_shared_data():
     shared_data_['telemetry_data'] = {
         'game': {
             'connected': True,
-            'paused': False,
-            'time': '0001-01-08T21: 09: 00Z',
+            'paused': True,
+            'time': json_time(GAME_TIME_BASE),
             'timeScale': 19.0,
-            'nextRestStopTime': '0001-01-01T10: 11: 00Z',
-            'version': '1.10',
-            'telemetryPluginVersion': TELEMETRY_PLUGIN_VERSION
+            'nextRestStopTime': json_time(GAME_TIME_BASE),
+            'version': '0.0',
+            'telemetryPluginVersion': TELEMETRY_PLUGIN_VERSION,
         },
         'truck': {
-            'id': 'man', # Probably config for truck! with correct config attribute!
-            'make': 'MAN', #?
-            'model': 'TGX', #?
+            'id': 'unknown',
+            'make': 'UNKNOWN',
+            'model': 'UNKNOWN',
             'speed': 0.0,
             'cruiseControlSpeed': 0.0,
             'cruiseControlOn': False,
             'odometer': 0.0,
-            'gear': 1,
-            'displayedGear': 1,
+            'gear': 0,
+            'displayedGear': 0,
             'forwardGears': 12,
             'reverseGears': 1,
-            'shifterType': 'arcade',
+            'shifterType': 'automatic',
             'engineRpm': 0.0,
             'engineRpmMax': 2500.0,
             'fuel': 0.0,
@@ -199,11 +199,11 @@ def init_shared_data():
             'wearChassis': 0.0,
             'wearWheels': 0.0,
             'userSteer': 0.0, # wheel + input steering. scale wheel *4
-            'userThrottle': 1.0, # wheel + input
+            'userThrottle': 0.0, # wheel + input
             'userBrake': 0.0,
             'userClutch': 0.0,
             'gameSteer': 0.0,
-            'gameThrottle': 1.0,
+            'gameThrottle': 0.0,
             'gameBrake': 0.0,
             'gameClutch': 0.0,
             'shifterSlot': 0,
@@ -234,7 +234,7 @@ def init_shared_data():
             'batteryVoltage': 24.0,
             'batteryVoltageWarningOn': False,
             'batteryVoltageWarningValue': 22.0,
-            'lightsDashboardValue': 1.0,
+            'lightsDashboardValue': 0.0,
             'lightsDashboardOn': False,
             'blinkerLeftActive': False,
             'blinkerRightActive': False,
@@ -279,8 +279,8 @@ def init_shared_data():
         },
         'trailer': {
             'attached': False,
-            'id': 'derrick', #?
-            'name': 'derrick', #?
+            'id': 'unknown',
+            'name': 'Unknown',
             'mass': 22000.0,
             'wear': 0.0,
             'placement': {
@@ -294,162 +294,17 @@ def init_shared_data():
         },
         'job': {
             'income': 0,
-            'deadlineTime': '0001-01-09T03: 34: 00Z',
-            'remainingTime': '0001-01-01T06: 25: 00Z',
-            'sourceCity': '<sourceCity>',
-            'sourceCompany': '<sourceCompany>',
-            'destinationCity': '<destinationCity>',
-            'destinationCompany': '<destinationCompany>'
+            'deadlineTime':  json_time(GAME_TIME_BASE),
+            'remainingTime': json_time(GAME_TIME_BASE),
+            'sourceCity': 'Unknown',
+            'sourceCompany': 'Unknown',
+            'destinationCity': 'Unknown',
+            'destinationCompany': 'Unknown',
         },
         'navigation': {
-            'estimatedTime': '0001-01-01T03: 01: 40Z',
+            'estimatedTime': json_time(GAME_TIME_BASE),
             'estimatedDistance': 0,
-            'speedLimit': 90
-        }
-    }
-
-    shared_data_['telemetry_data'] = {
-        'game': {
-            'connected': True,
-            'paused': False,
-            'time': 'NO VALUE',
-            'timeScale': 13.37,
-            'nextRestStopTime': 'NO VALUE',
-            'version': 'NO VALUE',
-            'telemetryPluginVersion': TELEMETRY_PLUGIN_VERSION
-        },
-        'truck': {
-            'id': 'NO VALUE', # Probably config for truck! with correct config attribute!
-            'make': 'NO VALUE', #?
-            'model': 'NO VALUE', #?
-            'speed': 13.37,
-            'cruiseControlSpeed': 13.37,
-            'cruiseControlOn': False,
-            'odometer': 13.37,
-            'gear': 99,
-            'displayedGear': 99,
-            'forwardGears': 99,
-            'reverseGears': 99,
-            'shifterType': 'NO VALUE',
-            'engineRpm': 13.37,
-            'engineRpmMax': 13.37,
-            'fuel': 13.37,
-            'fuelCapacity': 13.37,
-            'fuelAverageConsumption': 13.37,
-            'fuelWarningFactor': 13.37,
-            'fuelWarningOn': False,
-            'wearEngine': 13.37,
-            'wearTransmission': 13.37,
-            'wearCabin': 13.37,
-            'wearChassis': 13.37,
-            'wearWheels': 13.37,
-            'userSteer': 13.37, # wheel + input steering. scale wheel *4
-            'userThrottle': 13.37, # wheel + input
-            'userBrake': 13.37,
-            'userClutch': 13.37,
-            'gameSteer': 13.37,
-            'gameThrottle': 13.37,
-            'gameBrake': 13.37,
-            'gameClutch': 13.37,
-            'shifterSlot': 99,
-            'engineOn': False,
-            'electricOn': False,
-            'wipersOn': False,
-            'retarderBrake': 99,
-            'retarderStepCount': 99,
-            'parkBrakeOn': False,
-            'motorBrakeOn': False,
-            'brakeTemperature': 13.37,
-            'adblue': 13.37,
-            'adblueCapacity': 13.37,
-            'adblueAverageConsumption': 13.37,
-            'adblueWarningOn': False,
-            'airPressure': 13.37,
-            'airPressureWarningOn': False,
-            'airPressureWarningValue': 13.37,
-            'airPressureEmergencyOn': False,
-            'airPressureEmergencyValue': 13.37,
-            'oilTemperature': 13.37,
-            'oilPressure': 13.37,
-            'oilPressureWarningOn': False,
-            'oilPressureWarningValue': 13.37,
-            'waterTemperature': 13.37,
-            'waterTemperatureWarningOn': False,
-            'waterTemperatureWarningValue': 13.37,
-            'batteryVoltage': 13.37,
-            'batteryVoltageWarningOn': False,
-            'batteryVoltageWarningValue': 13.37,
-            'lightsDashboardValue': 13.37,
-            'lightsDashboardOn': False,
-            'blinkerLeftActive': False,
-            'blinkerRightActive': False,
-            'blinkerLeftOn': False,
-            'blinkerRightOn': False,
-            'lightsParkingOn': False,
-            'lightsBeamLowOn': False,
-            'lightsBeamHighOn': False,
-            'lightsAuxFrontOn': False,
-            'lightsAuxRoofOn': False,
-            'lightsBeaconOn': False,
-            'lightsBrakeOn': False,
-            'lightsReverseOn': False,
-            'placement': {
-                'x': 13.37,
-                'y': 13.37,
-                'z': 13.37,
-                'heading': 13.37,
-                'pitch': 13.37,
-                'roll': 13.37,
-            },
-            'acceleration': {
-                'x': 13.37,
-                'y': 13.37,
-                'z': 13.37,
-            },
-            'head': {
-                'x': 13.37,
-                'y': 13.37,
-                'z': 13.37,
-            },
-            'cabin': {
-                'x': 13.37,
-                'y': 13.37,
-                'z': 13.37,
-            },
-            'hook': {
-                'x': 13.37,
-                'y': 13.37,
-                'z': 13.37,
-            }
-        },
-        'trailer': {
-            'attached': False,
-            'id': 'NO VALUE', #?
-            'name': 'NO VALUE', #?
-            'mass': 13.37,
-            'wear': 13.37,
-            'placement': {
-                'x': 13.37,
-                'y': 13.37,
-                'z': 13.37,
-                'heading': 13.37,
-                'pitch': 13.37,
-                'roll': 13.37,
-            }
-        },
-        'job': {
-            'income': 99,
-            'deadlineTime': 'NO VALUE',
-            'remainingTime': 'NO VALUE', # delivery_time - game_time
-            'sourceCity': 'NO VALUE',
-            'sourceCompany': 'NO VALUE',
-            'destinationCity': 'NO VALUE',
-            'destinationCompany': 'NO VALUE'
-        },
-        'navigation': {
-            'estimatedTime': 'NO VALUE',
-            'estimatedDistance': 99,
-            'speedLimit': 90
+            'speedLimit': 80,
         }
     }
 
