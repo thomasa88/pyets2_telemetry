@@ -1,4 +1,6 @@
 import logging
+import math
+import sys
 import threading
 from datetime import datetime, timedelta
 
@@ -11,6 +13,9 @@ from scs_defs import *
 TELEMETRY_PLUGIN_VERSION = '4'
 
 GAME_TIME_BASE = datetime(1, 1, 1)
+
+# Used by conversion functions when the game gives a bad value
+BAD_VALUE = object()
 
 server_ = None
 server_thread_ = None
@@ -100,6 +105,8 @@ def channel_cb(name, index, value, context):
 
         if hasattr(channel, 'conv_func'):
             value = channel.conv_func(value)
+            if value is BAD_VALUE:
+                return
 
         if isinstance(value, datetime):
             value = json_time(value)
@@ -332,8 +339,22 @@ def non_zero(value):
     return value != 0
 
 def flatten_placement(value):
-    return { **(value['position']), **(value['orientation']) }
-    
+    # API can give Infinity or Nan for pitch (and others?) which is
+    # not part of JSON and makes the client parser fail. Note: I have
+    # confirmed in the C++ loader that the values from the SDK are
+    # indeed Inf and Nan.
+    return check_bad_float( { **(value['position']), **(value['orientation']) } )
+
+FLOAT_INF_POS = float('inf')
+FLOAT_INF_NEG = float('-inf')
+def check_bad_float(d):
+    # Cannot test equality for NaN, as NaN is always non-equal to any
+    # float by definition
+    for v in d.values():
+        if v == FLOAT_INF_POS or v == FLOAT_INF_NEG or math.isnan(v):
+            return BAD_VALUE
+    return d
+
 # JSON mapping
 SCS_TELEMETRY_CHANNEL_game_time.json_path = ('game', 'time')
 SCS_TELEMETRY_CHANNEL_game_time.conv_func = lambda v: game_time_
