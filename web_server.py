@@ -24,11 +24,10 @@ HTML_DIR = BASE_PATH + '/Html'
 
 config_json = None
 
-negotiate_json = json.dumps(
-    {
+negotiate_base = {
         "Url":"/signalr",
-        "ConnectionToken": "unique_connect_token",
-        "ConnectionId": "660fa684-9d01-4c4a-86e7-deb5ad7c6b87",
+        "ConnectionToken": "",
+        "ConnectionId": "",
         "KeepAliveTimeout": 6.0,
         "DisconnectTimeout": 9.0,
         "ConnectionTimeout": 12.0,
@@ -36,7 +35,7 @@ negotiate_json = json.dumps(
         "ProtocolVersion":"1.5",
         "TransportConnectTimeout": 5.0,
         "LongPollDelay": 0.0
-    })
+}
 
 connect_json = json.dumps(
     {"C":"s-0,2CDDE7A|1,23ADE88|2,297B01B|3,3997404|4,33239B5","S":1,"M":[]}
@@ -109,7 +108,10 @@ class SignalrHandler(http.server.SimpleHTTPRequestHandler):
             processed = False
         elif self.path.startswith('/signalr/negotiate'):
             self.read_data()
-            self.write_response(negotiate_json)
+            client = self.server.add_client()
+            negotiate = negotiate_base.copy()
+            negotiate['ConnectionToken'] = client.token
+            self.write_response(json.dumps(negotiate))
         elif self.path.startswith('/signalr/start'):
             self.read_data()
             self.write_response(start_json)
@@ -121,6 +123,12 @@ class SignalrHandler(http.server.SimpleHTTPRequestHandler):
                 self.write_response('', code=http.HTTPStatus.BAD_REQUEST)
         elif self.path.startswith('/signalr/reconnect'):
             self.read_data()
+            query = self.parse_query()
+            token = query['connectionToken'][0]
+            client = self.server.clients.get(token)
+            if client is None:
+                client = self.server.add_client(token)
+            client.new = True
             self.write_response(reconnect_json)
         elif self.path.startswith('/signalr/ping'):
             self.read_data()
@@ -129,6 +137,15 @@ class SignalrHandler(http.server.SimpleHTTPRequestHandler):
             data = self.read_data()
             post_data = urllib.parse.parse_qs(data)
             messageId = post_data['messageId'][0]
+
+            query = self.parse_query()
+            token = query['connectionToken'][0]
+            client = self.server.clients.get(token)
+            new_client = False
+            if client is not None:
+                if client.new:
+                    client.new = False
+                    new_client = True
             
             # Should not respond until new data is available?
             #time.sleep(1)
@@ -139,9 +156,11 @@ class SignalrHandler(http.server.SimpleHTTPRequestHandler):
                 # wait() can release early, but we don't know how much
                 # time that has passed, so we continue, to avoid waiting
                 # too long before sending a keep-alive to the client.
-                if not shared_data['new_data'] and not self.stop_event_.is_set():
+                if (not shared_data['new_data'] and
+                    not self.stop_event_.is_set() and
+                    not new_client):
                     shared_data['condition'].wait(10.0)
-                if shared_data['new_data']: # or True: #HACK. always take data
+                if shared_data['new_data'] or new_client:
                     shared_data['new_data'] = False
                     # Copy the data
                     telemetry_data = json.dumps(shared_data['telemetry_data'])
@@ -194,6 +213,9 @@ class SignalrHandler(http.server.SimpleHTTPRequestHandler):
             utf8_data = self.rfile.read(int(length))
             return utf8_data.decode('utf-8')
 
+    def parse_query(self):
+        return urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        
     def write_response(self, data, code=http.HTTPStatus.OK):
         utf8_data = data.encode('utf-8')
         self.send_response(code)
@@ -203,7 +225,6 @@ class SignalrHandler(http.server.SimpleHTTPRequestHandler):
         # TODO: Transfer-Encoding: chunked. Will likely affect shutdown behavior.
         self.end_headers()
         self.wfile.write(utf8_data)
-
 
 # Python 3.7 has built-in ThreadingHTTPServer, but Python 3.6 does not
 class SignalrHttpServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
@@ -217,6 +238,10 @@ class SignalrHttpServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
         self.stop_event_ = threading.Event()
         self.shared_data_ = shared_data
         self.collect_skins()
+
+        # State
+        self.token_counter = 0
+        self.clients = {}
 
         # Make sure code does not get stuck in blocking read when trying to exit
         socket.setdefaulttimeout(1)
@@ -243,8 +268,24 @@ class SignalrHttpServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
                 skin_config['name'] = d.name
                 skin_configs.append(skin_config)
         config_json = json.dumps( { 'skins': skin_configs } )
-        print(config_json)
 
+    def add_client(self, token=None):
+        # TODO: Handle client timeout and abort -> clean-up
+        if token is None:
+            token = self.next_token()
+        else:
+            # Server restarted. Try to compensate
+            self.token_counter = int(token) + 10
+        state = ClientState()
+        state.token = token
+        state.new = True
+        self.clients[token] = state
+        return state
+    
+    def next_token(self):
+        self.token_counter += 1
+        return str(self.token_counter)
+        
     def shutdown(self):
         # Stop accepting new connections
         super().shutdown()
@@ -255,3 +296,5 @@ class SignalrHttpServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
         with self.shared_data_['condition']:
             self.shared_data_['condition'].notify_all()
 
+class ClientState:
+    pass
