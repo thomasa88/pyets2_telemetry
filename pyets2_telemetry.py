@@ -1,6 +1,5 @@
 import logging
 import math
-import sys
 import threading
 from datetime import datetime, timedelta
 
@@ -12,6 +11,7 @@ from scs_defs import *
 # From ETS2 Telemetry Server
 TELEMETRY_PLUGIN_VERSION = '4'
 
+# Start of game time
 GAME_TIME_BASE = datetime(1, 1, 1)
 
 # Used by conversion functions when the game gives a bad value
@@ -41,7 +41,6 @@ def shared_data_notify():
 
 # Setting up logging, so other threads can log to the game console
 class TelemetryLogHandler(logging.Handler):
-    # Is locking (thread safety) included in logging.Handler?
     def emit(self, record):
         telemetry.log(self.format(record))
 
@@ -57,6 +56,7 @@ def telemetry_init(version, game_name, game_id, game_version):
     telemetry.register_for_event(SCS_TELEMETRY_EVENT_configuration, event_cb, None)
     telemetry.register_for_event(SCS_TELEMETRY_EVENT_started, event_cb, None)
     telemetry.register_for_event(SCS_TELEMETRY_EVENT_paused, event_cb, None)
+    
     for channel in SCS_CHANNELS:
         if not hasattr(channel, 'json_path'):
             continue
@@ -64,7 +64,8 @@ def telemetry_init(version, game_name, game_id, game_version):
             index = 0
         else:
             index = None
-        register_for_channel(channel, channel.internal_id, index)
+        register_for_channel(channel, channel, index)
+        
     start_server()
 
 def register_for_channel(channel, context, index=None):
@@ -84,10 +85,10 @@ def register_for_channel(channel, context, index=None):
 def channel_cb(name, index, value, context):
     global game_time_, delivery_time_    
     
-    channel = SCS_CHANNELS[context]
+    channel = context
 
     with shared_data_['condition']:
-        # # Optimize this?
+        # Optimize this?
         if channel == SCS_TELEMETRY_CHANNEL_game_time:
             game_time_ = GAME_TIME_BASE + timedelta(minutes=value)
             if game_time_ > delivery_time_:
@@ -127,15 +128,14 @@ def event_cb(event, event_info, context):
                         if len(json_path) > 2:
                             conv_func = json_path[2]
                             value = conv_func(value)
-                            if name == SCS_TELEMETRY_CONFIG_ATTRIBUTE_delivery_time:
-                                # Remaining time will change as game time
-                                # progresses, so let's save delivery time
-                                # and calculate remaining time when game
-                                # time changes.
-                                delivery_time_ = value
-                            if isinstance(value, datetime):
-                                value = json_time(value)
-                                
+                        if name == SCS_TELEMETRY_CONFIG_ATTRIBUTE_delivery_time:
+                            # Remaining time will change as game time
+                            # progresses, so let's save delivery time
+                            # and calculate remaining time when game
+                            # time changes.
+                            delivery_time_ = value
+                        if isinstance(value, datetime):
+                            value = json_time(value)
                         set_shared_value(json_path[0], json_path[1], value)
             shared_data_notify()
     elif event == SCS_TELEMETRY_EVENT_started:
@@ -158,7 +158,13 @@ def start_server():
     server_thread_.name = "signalr server"
     server_thread_.start()
 
-    telemetry.log("Started server on port %u" % server_.PORT_NUMBER)
+    logging.info("Started server on port %u" % server_.PORT_NUMBER)
+
+def stop_server():
+    server_.shutdown()
+    server_thread_.join()
+    server_.server_close()
+    logging.info("Stopped server")
 
 def run_and_log_exceptions(target):
     def runner():
@@ -173,13 +179,7 @@ def telemetry_shutdown():
     logging.info("Shutting down")
     if server_:
         stop_server()
-    telemetry.log("bye")
-
-def stop_server():
-    server_.shutdown()
-    server_thread_.join()
-    server_.server_close()
-    telemetry.log("Stopped server")
+    logging.info("bye")
 
 def init_shared_data():
     shared_data_['new_data'] = True

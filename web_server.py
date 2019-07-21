@@ -4,17 +4,14 @@
 # https://blog.3d-logic.com/2015/03/29/signalr-on-the-wire-an-informal-description-of-the-signalr-protocol/
 # http://www.mithril.com.au/SignalR%20Protocol.docx (old protocol version)
 
-import glob
 import http
 import http.server
 import json
 import logging
 import os
-import queue
 import socket
 import socketserver
 import threading
-import time
 import urllib
 
 import scs_helpers
@@ -37,20 +34,18 @@ negotiate_base = {
     'LongPollDelay': 0.0
 }
 
-connect_json = json.dumps(
-    {"C":"s-0,2CDDE7A|1,23ADE88|2,297B01B|3,3997404|4,33239B5","S":1,"M":[]}
-)
+connect_json = json.dumps({
+        'C': 's-0,2CDDE7A|1,23ADE88|2,297B01B|3,3997404|4,33239B5',
+        'S': 1,
+        'M': []
+    })
 
 # Correct?
 reconnect_json = json.dumps({})
 
-start_json = json.dumps(
-    {"Response":"started"}
-)
+start_json = json.dumps({ 'Response': 'started' })
 
-poll_keepalive_json = json.dumps(
-    {}
-)
+poll_keepalive_json = json.dumps({})
 
 pong_json = json.dumps({ 'Response': 'pong' })
 
@@ -147,8 +142,6 @@ class SignalrHandler(http.server.SimpleHTTPRequestHandler):
             token = query['connectionToken'][0]
             new_client = self.server.test_and_set_client_new(token, False)
             
-            # Should not respond until new data is available?
-            #time.sleep(1)
             telemetry_data = None
             shared_data = self.shared_data_
             with shared_data['condition']:

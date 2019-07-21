@@ -1,5 +1,4 @@
 SCS_CHANNELS = []
-SCS_CONFIGS = []
 
 class ScsChannel:
     def __init__(self, name, type, indexed):
@@ -13,18 +12,6 @@ class ScsChannel:
     def __eq__(self, other):
         return self.internal_id == other.internal_id
 
-class ScsConfig:
-    def __init__(self, id, type, indexed):
-        self.id = id
-        self.type = type
-        # Indicates if the value is indexed
-        self.indexed = indexed
-        self.internal_id = len(SCS_CONFIGS)
-        SCS_CONFIGS.append(self)
-
-    def __eq__(self, other):
-        return self.internal_id == other.internal_id
-    
 SCS_RESULT_ok = 0
 SCS_RESULT_unsupported = -1
 SCS_RESULT_invalid_parameter = -2
