@@ -25,16 +25,16 @@ HTML_DIR = BASE_PATH + '/Html'
 config_json = None
 
 negotiate_base = {
-        "Url":"/signalr",
-        "ConnectionToken": "",
-        "ConnectionId": "",
-        "KeepAliveTimeout": 6.0,
-        "DisconnectTimeout": 9.0,
-        "ConnectionTimeout": 12.0,
-        "TryWebSockets": False,
-        "ProtocolVersion":"1.5",
-        "TransportConnectTimeout": 5.0,
-        "LongPollDelay": 0.0
+    'Url': '/signalr',
+    'ConnectionToken': '',
+    'ConnectionId': '',
+    'KeepAliveTimeout': 6.0,
+    'DisconnectTimeout': 9.0,
+    'ConnectionTimeout': 12.0,
+    'TryWebSockets': False,
+    'ProtocolVersion':'1.5',
+    'TransportConnectTimeout': 5.0,
+    'LongPollDelay': 0.0
 }
 
 connect_json = json.dumps(
@@ -53,6 +53,8 @@ poll_keepalive_json = json.dumps(
 )
 
 pong_json = json.dumps({ 'Response': 'pong' })
+
+
 
 class SignalrHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, shared_data, stop_event, request, client_address, server):
@@ -108,9 +110,9 @@ class SignalrHandler(http.server.SimpleHTTPRequestHandler):
             processed = False
         elif self.path.startswith('/signalr/negotiate'):
             self.read_data()
-            client = self.server.add_client()
+            token = self.server.add_client()
             negotiate = negotiate_base.copy()
-            negotiate['ConnectionToken'] = client.token
+            negotiate['ConnectionToken'] = token
             self.write_response(json.dumps(negotiate))
         elif self.path.startswith('/signalr/start'):
             self.read_data()
@@ -125,14 +127,17 @@ class SignalrHandler(http.server.SimpleHTTPRequestHandler):
             self.read_data()
             query = self.parse_query()
             token = query['connectionToken'][0]
-            client = self.server.clients.get(token)
-            if client is None:
-                client = self.server.add_client(token)
-            client.new = True
+            self.server.test_and_set_client_new(token, True)
             self.write_response(reconnect_json)
         elif self.path.startswith('/signalr/ping'):
             self.read_data()
             self.write_response(pong_json)
+        elif self.path.startswith('/signalr/abort'):
+            self.read_data()
+            query = self.parse_query()
+            token = query['connectionToken'][0]
+            self.server.remove_client(token)
+            self.write_response('')
         elif self.path.startswith('/signalr/poll'):
             data = self.read_data()
             post_data = urllib.parse.parse_qs(data)
@@ -140,12 +145,7 @@ class SignalrHandler(http.server.SimpleHTTPRequestHandler):
 
             query = self.parse_query()
             token = query['connectionToken'][0]
-            client = self.server.clients.get(token)
-            new_client = False
-            if client is not None:
-                if client.new:
-                    client.new = False
-                    new_client = True
+            new_client = self.server.test_and_set_client_new(token, False)
             
             # Should not respond until new data is available?
             #time.sleep(1)
@@ -240,8 +240,9 @@ class SignalrHttpServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
         self.collect_skins()
 
         # State
-        self.token_counter = 0
-        self.clients = {}
+        self._state_lock = threading.RLock()
+        self._token_counter = 0
+        self._clients = {}
 
         # Make sure code does not get stuck in blocking read when trying to exit
         socket.setdefaulttimeout(1)
@@ -270,21 +271,38 @@ class SignalrHttpServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
         config_json = json.dumps( { 'skins': skin_configs } )
 
     def add_client(self, token=None):
-        # TODO: Handle client timeout and abort -> clean-up
-        if token is None:
-            token = self.next_token()
-        else:
-            # Server restarted. Try to compensate
-            self.token_counter = int(token) + 10
-        state = ClientState()
-        state.token = token
-        state.new = True
-        self.clients[token] = state
-        return state
+        with self._state_lock:
+            # TODO: Handle client timeout and abort -> clean-up
+            if token is None:
+                self._token_counter += 1
+                token = str(self._token_counter)
+            else:
+                # Server probably restarted with old clients. Try to compensate.
+                self._token_counter = int(token) + 10
+            state = ClientState()
+            state.token = token
+            state.new = True
+            self._clients[token] = state
+            return state.token
     
-    def next_token(self):
-        self.token_counter += 1
-        return str(self.token_counter)
+    def _get_client(self, token):
+        client = self._clients.get(token)
+        if client is None:
+            self.add_client(token)
+            client = self._clients.get(token)
+        return client
+
+    def remove_client(self, token):
+        with self._state_lock:
+            if token in self._clients:
+                del self._clients[token]
+
+    def test_and_set_client_new(self, token, new_value):
+        with self._state_lock:
+            client = self._get_client(token)
+            old_value = client.new
+            client.new = new_value
+            return old_value
         
     def shutdown(self):
         # Stop accepting new connections
