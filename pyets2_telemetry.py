@@ -49,6 +49,8 @@ def telemetry_init(version, game_name, game_id, game_version):
     shared_data_['telemetry_data']['game']['version'] = game_name.split(' ')[-1]
 
     telemetry.register_for_event(SCS_TELEMETRY_EVENT_configuration, event_cb, None)
+    telemetry.register_for_event(SCS_TELEMETRY_EVENT_started, event_cb, None)
+    telemetry.register_for_event(SCS_TELEMETRY_EVENT_paused, event_cb, None)
     for channel in SCS_CHANNELS:
         if not hasattr(channel, 'json_path'):
             continue
@@ -130,11 +132,11 @@ def event_cb(event, event_info, context):
             shared_data_notify()
     elif event == SCS_TELEMETRY_EVENT_started:
         with shared_data_['condition']:
-            set_value('game', 'paused', False)
+            set_shared_value('game', 'paused', False)
             shared_data_notify()
     elif event == SCS_TELEMETRY_EVENT_paused:
         with shared_data_['condition']:
-            set_value('game', 'paused', True)
+            set_shared_value('game', 'paused', True)
             shared_data_notify()
         
 def start_server():
