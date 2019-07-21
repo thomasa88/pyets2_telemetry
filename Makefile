@@ -26,11 +26,12 @@ PYTHON_LDFLAGS := $(shell pkg-config --libs python3)
 CXXFLAGS := $(PYTHON_CFLAGS) -std=c++17 -fPIC -Wall -O2
 LDFLAGS := $(PYTHON_LDFLAGS)
 
-SRCS := loader.cpp
+INCS := pyhelp.hpp log.hpp
+SRCS := loader.cpp pyhelp.cpp log.cpp
 
 TEST_SRCS := $(SRCS) test.cpp
 
-pyets2_telemetry_loader.so: $(SRCS) $(SDK_HEADERS)
+pyets2_telemetry_loader.so: $(SRCS) $(INCS) $(SDK_HEADERS)
 	g++ $(CXXFLAGS) -o $@ --shared -Wl,--no-allow-shlib-undefined -Wl,$(LIB_NAME_OPTION),$@ $(SDK_INCLUDES) $(SRCS) $(LDFLAGS)
 
 test: $(TEST_SRCS) $(SDK_HEADERS)

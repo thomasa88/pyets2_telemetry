@@ -16,176 +16,26 @@
 #include "amtrucks/scssdk_ats.h"
 #include "amtrucks/scssdk_telemetry_ats.h"
 
-// Handles reference counting of PyObject*
-// TODO: Own file. pyhelp namespace.
-class PyObjRef {
-public:
-    PyObjRef() : py_obj_(nullptr) {
-    }
-    
-    explicit PyObjRef(PyObject *py_obj) : py_obj_(py_obj) {
-        inc_ref();
-    }
-
-    PyObjRef(const PyObjRef &other) : py_obj_(other.py_obj_) {
-        inc_ref();
-    }
-
-    PyObjRef(PyObjRef &&other) : py_obj_(other.py_obj_) {
-        other.py_obj_ = nullptr;
-    }
-
-    PyObjRef &operator=(const PyObjRef &other) {
-        if (&other != this) {
-            py_obj_ = other.py_obj_;
-            inc_ref();
-        }
-        return *this;
-    }
-
-    ~PyObjRef() {
-        dec_ref();
-    }
-
-    PyObject *get() {
-        return py_obj_;
-    }
-
-    void set(PyObject *py_obj) {
-        if (py_obj != py_obj_) {
-            dec_ref();
-            py_obj_ = py_obj;
-            inc_ref();
-        }
-    }
-
-    void reset() {
-        set(nullptr);
-    }
-
-    /*// Force increment. Use after "loading" the pointer using ref()
-    void inc() {
-        inc_ref();
-    }
-
-    PyObject *&ref() {
-        return py_obj_;
-    }*/
-private:
-    void inc_ref() {
-        if (py_obj_ != nullptr) {
-            Py_INCREF(py_obj_);
-        }
-    }
-
-    void dec_ref() {
-        if (py_obj_ != nullptr) {
-            Py_DECREF(py_obj_);
-        }
-    }
-    
-    PyObject *py_obj_;
-};
-
+#include "pyhelp.hpp"
+#include "log.hpp"
 
 static scs_telemetry_init_params_v101_t scs_params_;
-static PyObjRef py_module_;
+static pyhelp::PyObjRef py_module_;
 static PyThreadState *py_thread_state_ = nullptr;
 
 struct cb_context {
-    PyObjRef py_callback;
-    PyObjRef py_context;
+    pyhelp::PyObjRef py_callback;
+    pyhelp::PyObjRef py_context;
 };
 static std::vector<cb_context> registered_channels_;
 static std::vector<cb_context> registered_events_;
-
-static void log(const std::string &prefix, const char *format, va_list ap) {
-    std::string buf(prefix);
-    buf.resize(256);
-    vsnprintf(buf.data() + prefix.size(), buf.size() - prefix.size(), format, ap);
-    scs_params_.common.log(SCS_LOG_TYPE_message, buf.c_str());
-}
-
-static void log(const std::string &prefix, const char *format, ...)
-    __attribute__ ((format (printf, 2, 3)));
-static void log(const std::string &prefix, const char *format, ...) {
-    va_list ap;
-    va_start(ap, format);
-    log(prefix, format, ap);
-    va_end(ap);
-}
-
-static void log_loader(const char *format, ...)
-    __attribute__ ((format (printf, 1, 2)));
-static void log_loader(const char *format, ...) {
-    static const std::string prefix = "PyETS2 Telemetry Loader: ";
-    va_list ap;
-    va_start(ap, format);
-    log(prefix, format, ap);
-    va_end(ap);
-}
-
-static void log_py(const char *message) {
-    static const std::string prefix = "PyETS2 Telemetry: ";
-    log(prefix, "%s", message);
-}
-
-
-// Python call helpers
-namespace pyhelp {
-
-// Equivalent to PyErr_Print()
-void log_and_clear_py_err() {
-    PyObject *py_err_type, *py_err_value, *py_err_traceback;
-    PyErr_Fetch(&py_err_type, &py_err_value, &py_err_traceback);
-    PyErr_NormalizeException(&py_err_type, &py_err_value, &py_err_traceback);
-    PyObjRef py_err_string(PyObject_Str(py_err_value));
-    const char *err_value = PyUnicode_AsUTF8AndSize(py_err_string.get(), nullptr);
-    // TODO: Handle stack trace
-    log_loader("%s: %s", reinterpret_cast<PyTypeObject*>(py_err_type)->tp_name, err_value);
-    Py_XDECREF(py_err_type);
-    Py_XDECREF(py_err_value);
-    Py_XDECREF(py_err_traceback);
-    PyErr_Clear();
-}
-
-template <class ... Args>
-bool try_call_function(PyObject *py_func, const char *arg_format, Args... args) {
-    if (py_func == nullptr || !PyCallable_Check(py_func)) {
-        log_loader("Not a function");
-        return false;
-    }
-    PyObjRef py_args(Py_BuildValue(arg_format, args...));
-    PyObjRef ret(PyObject_CallObject(py_func, py_args.get()));
-    if (ret.get() == nullptr) {
-        log_and_clear_py_err();
-        return false;
-    }
-    return true;
-}
-
-template <class ... Args>
-bool try_call_function(const char *name, const char *arg_format, Args... args) {
-    PyObjRef py_func(PyObject_GetAttrString(py_module_.get(), name));
-    bool ok = try_call_function(py_func.get(), arg_format, args...);
-    if (!ok) {
-        log_loader("Calling function %s failed", name);
-    }
-    return ok;
-}
-
-bool try_call_function(const char *name) {
-    return try_call_function(name, "()");
-}
-
-}
 
 
 // telemetry Python module
 
 template <class T>
-static PyObjRef create_py_vector(const T &scs_vector) {
-    PyObjRef py_dict(PyDict_New());
+static pyhelp::PyObjRef create_py_vector(const T &scs_vector) {
+    pyhelp::PyObjRef py_dict(PyDict_New());
     PyDict_SetItemString(py_dict.get(), "x",
                          PyFloat_FromDouble(scs_vector.x));
     PyDict_SetItemString(py_dict.get(), "y",
@@ -195,8 +45,8 @@ static PyObjRef create_py_vector(const T &scs_vector) {
     return py_dict;
 }
 
-static PyObjRef create_py_euler(const scs_value_euler_t &euler) {
-    PyObjRef py_dict(PyDict_New());
+static pyhelp::PyObjRef create_py_euler(const scs_value_euler_t &euler) {
+    pyhelp::PyObjRef py_dict(PyDict_New());
     PyDict_SetItemString(py_dict.get(), "heading",
                          PyFloat_FromDouble(euler.heading));
     PyDict_SetItemString(py_dict.get(), "pitch",
@@ -206,9 +56,9 @@ static PyObjRef create_py_euler(const scs_value_euler_t &euler) {
     return py_dict;
 }
 
-// Returns empty PyObjRef on error
-static PyObjRef create_py_value(const scs_value_t *value) {
-    PyObjRef py_value;
+// Returns empty pyhelp::PyObjRef on error
+static pyhelp::PyObjRef create_py_value(const scs_value_t *value) {
+    pyhelp::PyObjRef py_value;
     if (value == nullptr) {
         return py_value;
     }
@@ -284,13 +134,15 @@ SCSAPI_VOID telemetry_channel_cb(const scs_string_t name,
     
     PyEval_RestoreThread(py_thread_state_);
 
-    { // Make sure no PyObjRef ref counting happens after PyEval_SaveThread()
+    { // Make sure no pyhelp::PyObjRef ref counting happens after PyEval_SaveThread()
         // value might be NULL if user has set SCS_TELEMETRY_CHANNEL_FLAG_no_value
-        PyObjRef py_value(create_py_value(value));
+        pyhelp::PyObjRef py_value(create_py_value(value));
         if (py_value.get() == nullptr) {
             py_value.set(Py_None);
         }
-        pyhelp::try_call_function(context_val.py_callback.get(), "sIOO", name, index, py_value.get(), context_val.py_context.get());
+        pyhelp::try_call_function(context_val.py_callback.get(),
+                                  "sIOO", name, index,
+                                  py_value.get(), context_val.py_context.get());
     }
     py_thread_state_ = PyEval_SaveThread();
 }
@@ -308,8 +160,8 @@ SCSAPI_VOID telemetry_event_cb(const scs_event_t event,
     
     PyEval_RestoreThread(py_thread_state_);
 
-    { // Make sure no PyObjRef ref counting happens after PyEval_SaveThread()
-        PyObjRef py_value(Py_None);
+    { // Make sure no pyhelp::PyObjRef ref counting happens after PyEval_SaveThread()
+        pyhelp::PyObjRef py_value(Py_None);
 
         // TODO: Use custom types (PyType) instead of dicts? Config and gameplay
         // events should not happen very often?
@@ -332,12 +184,12 @@ SCSAPI_VOID telemetry_event_cb(const scs_event_t event,
                 py_value.set(PyDict_New());
                 PyDict_SetItemString(py_value.get(), "id",
                                      PyUnicode_FromString(config->id));
-                PyObjRef py_attr_list(PyList_New(0));
+                pyhelp::PyObjRef py_attr_list(PyList_New(0));
                 PyDict_SetItemString(py_value.get(), "attributes",
                                      py_attr_list.get());
                 const scs_named_value_t *current_attr = config->attributes;
                 for (; current_attr->name != nullptr; ++current_attr) {
-                    PyObjRef py_attr_value(create_py_value(&current_attr->value));
+                    pyhelp::PyObjRef py_attr_value(create_py_value(&current_attr->value));
                     if (py_attr_value.get() == nullptr) {
                         py_attr_value.set(Py_None);
                     }
@@ -359,7 +211,9 @@ SCSAPI_VOID telemetry_event_cb(const scs_event_t event,
                 //default:
                 // Keep None-value
         }
-        pyhelp::try_call_function(context_val.py_callback.get(), "IOO", event, py_value.get(), context_val.py_context.get());
+        pyhelp::try_call_function(context_val.py_callback.get(),
+                                  "IOO", event, py_value.get(),
+                                  context_val.py_context.get());
     }
     py_thread_state_ = PyEval_SaveThread();
 }
@@ -462,6 +316,8 @@ SCSAPI_RESULT scs_telemetry_init(const scs_u32_t version, const scs_telemetry_in
     const scs_telemetry_init_params_v101_t *version_params = static_cast<const scs_telemetry_init_params_v101_t *>(params);
     scs_params_ = *version_params;
 
+    log_set_scs_log(scs_params_.common.log);
+
     log_loader("Initializing");
 
     // Set up path so the py file can be found
@@ -474,9 +330,9 @@ SCSAPI_RESULT scs_telemetry_init(const scs_u32_t version, const scs_telemetry_in
     Py_InitializeEx(0);
     PyEval_InitThreads();
 
-    { // Make sure no PyObjRef ref counting happens after PyEval_SaveThread()
+    { // Make sure no pyhelp::PyObjRef ref counting happens after PyEval_SaveThread()
         std::string python_module_name = "pyets2_telemetry";
-        PyObjRef py_module_name(PyUnicode_DecodeFSDefaultAndSize(
+        pyhelp::PyObjRef py_module_name(PyUnicode_DecodeFSDefaultAndSize(
                                     python_module_name.c_str(),
                                     python_module_name.size()));
         if (py_module_name.get() == nullptr) {
@@ -497,7 +353,7 @@ SCSAPI_RESULT scs_telemetry_init(const scs_u32_t version, const scs_telemetry_in
         log_loader("Python module imported");
         log_loader("Initialized");
 
-        pyhelp::try_call_function("telemetry_init", "IssI",
+        pyhelp::try_call_function(py_module_, "telemetry_init", "IssI",
                                   version,
                                   scs_params_.common.game_name,
                                   scs_params_.common.game_id,
@@ -513,7 +369,7 @@ SCSAPI_VOID scs_telemetry_shutdown() {
     PyEval_RestoreThread(py_thread_state_);
 
     log_loader("Call telemetry_shutdown");
-    pyhelp::try_call_function("telemetry_shutdown");
+    pyhelp::try_call_function(py_module_, "telemetry_shutdown");
 
     log_loader("Unloading");
 
@@ -521,11 +377,12 @@ SCSAPI_VOID scs_telemetry_shutdown() {
     registered_events_.clear();
     py_module_.reset();
 
-    // All PyObjRef must be destroyed/reset before this point!
+    // All pyhelp::PyObjRef must be destroyed/reset before this point!
     // TODO: Class?
     Py_Finalize();
 
     py_thread_state_ = nullptr;
 
     log_loader("Unloaded");
+    log_set_scs_log(nullptr);
 }
