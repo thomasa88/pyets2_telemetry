@@ -1,5 +1,6 @@
 import logging
 import threading
+import traceback
 from datetime import datetime, timedelta
 
 import telemetry
@@ -145,11 +146,23 @@ def start_server():
 
     # Using Python Threading for now. Switch to Multiprocessing if this
     # becomes a performance problem. This will affect logging and data sharing.
-    server_thread_ = threading.Thread(target=server_.serve_forever)
+    server_thread_ = threading.Thread(
+        target=run_and_log_exceptions(server_.serve_forever))
     server_thread_.name = "signalr server"
     server_thread_.start()
 
     telemetry.log("Started server on port %u" % server_.PORT_NUMBER)
+
+def run_and_log_exceptions(target):
+    def runner():
+        try:
+            target()
+        except Exception as e:
+            exceptiondata = traceback.format_exc().splitlines()
+            logging.error("%s: %s" % (type(e).__name__, e))
+            logging.error("\n".join(exceptiondata[-3:-1]))
+            raise
+    return runner
 
 def telemetry_shutdown():
     logging.info("Shutting down")

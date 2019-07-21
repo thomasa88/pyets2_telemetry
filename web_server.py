@@ -14,6 +14,7 @@ import queue
 import socket
 import socketserver
 import threading
+import traceback
 import time
 import urllib
 
@@ -72,10 +73,6 @@ class SignalrHandler(http.server.SimpleHTTPRequestHandler):
         return super().translate_path(path)
 
     def handle_one_request(self):
-        # TODO: handle_one_request() blocks on readline(), which means that
-        # new connections with no data received can block the server from
-        # shutting down. BufferedReader has no non-blocking interface, so
-        # it will mean a bigger rewrite.
         if not self.stop_event_.is_set():
             super().handle_one_request()
         else:
@@ -95,6 +92,13 @@ class SignalrHandler(http.server.SimpleHTTPRequestHandler):
         except BrokenPipeError:
             # Client closed connection. Most likely left the web page.
             return True
+        except Exception as e:
+            # Each request is handled in a new thread, so we need to set up
+            # exception logging
+            exceptiondata = traceback.format_exc().splitlines()
+            logging.error("%s: %s" % (type(e).__name__, e))
+            logging.error("\n".join(exceptiondata[-3:-1]))
+            raise
 
     def do_signalr_comm(self):
         processed = True

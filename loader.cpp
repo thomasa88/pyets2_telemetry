@@ -101,7 +101,7 @@ static std::vector<cb_context> registered_events_;
 
 static void log(const std::string &prefix, const char *format, va_list ap) {
     std::string buf(prefix);
-    buf.resize(128);
+    buf.resize(256);
     vsnprintf(buf.data() + prefix.size(), buf.size() - prefix.size(), format, ap);
     scs_params_.common.log(SCS_LOG_TYPE_message, buf.c_str());
 }
