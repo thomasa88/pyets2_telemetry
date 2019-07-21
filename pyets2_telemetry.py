@@ -1,8 +1,8 @@
 import logging
 import threading
-import traceback
 from datetime import datetime, timedelta
 
+import scs_helpers
 import telemetry
 import web_server
 from scs_defs import *
@@ -158,9 +158,7 @@ def run_and_log_exceptions(target):
         try:
             target()
         except Exception as e:
-            exceptiondata = traceback.format_exc().splitlines()
-            logging.error("%s: %s" % (type(e).__name__, e))
-            logging.error("\n".join(exceptiondata[-3:-1]))
+            scs_helpers.log_exception(e)
             raise
     return runner
 

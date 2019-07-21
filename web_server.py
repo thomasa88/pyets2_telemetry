@@ -14,9 +14,10 @@ import queue
 import socket
 import socketserver
 import threading
-import traceback
 import time
 import urllib
+
+import scs_helpers
 
 BASE_PATH = 'plugins'
 HTML_DIR = BASE_PATH + '/Html'
@@ -95,9 +96,7 @@ class SignalrHandler(http.server.SimpleHTTPRequestHandler):
         except Exception as e:
             # Each request is handled in a new thread, so we need to set up
             # exception logging
-            exceptiondata = traceback.format_exc().splitlines()
-            logging.error("%s: %s" % (type(e).__name__, e))
-            logging.error("\n".join(exceptiondata[-3:-1]))
+            scs_helpers.log_exception(e)
             raise
 
     def do_signalr_comm(self):
