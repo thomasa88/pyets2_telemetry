@@ -1,6 +1,6 @@
 SCS_CHANNELS = []
 
-class ScsChannel:
+class ScsChannel(object):
     def __init__(self, name, type, indexed):
         self.name = name
         self.type = type
@@ -11,6 +11,20 @@ class ScsChannel:
 
     def __eq__(self, other):
         return self.internal_id == other.internal_id
+
+    def __hash__(self):
+        return self.internal_id
+
+class ScsEvent(object):
+    def __init__(self, id):
+        self.id = id
+        self.internal_id = id
+
+    def __eq__(self, other):
+        return self.internal_id == other.internal_id
+
+    def __hash__(self):
+        return self.internal_id
 
 SCS_RESULT_ok = 0
 SCS_RESULT_unsupported = -1
@@ -41,14 +55,6 @@ SCS_VALUE_TYPE_fplacement = 10
 SCS_VALUE_TYPE_dplacement = 11
 SCS_VALUE_TYPE_string = 12
 SCS_VALUE_TYPE_s64 = 13
-
-SCS_TELEMETRY_EVENT_invalid = 0
-SCS_TELEMETRY_EVENT_frame_start = 1
-SCS_TELEMETRY_EVENT_frame_end = 2
-SCS_TELEMETRY_EVENT_paused = 3
-SCS_TELEMETRY_EVENT_started = 4
-SCS_TELEMETRY_EVENT_configuration = 5
-SCS_TELEMETRY_EVENT_gameplay = 6
 
 SCS_TELEMETRY_CHANNEL_game_time = ScsChannel('game.time', SCS_VALUE_TYPE_u32, False)
 SCS_TELEMETRY_CHANNEL_local_scale = ScsChannel('local.scale', SCS_VALUE_TYPE_float, False)
@@ -151,6 +157,15 @@ SCS_TELEMETRY_TRUCK_CHANNEL_wheel_velocity = ScsChannel('truck.wheel.angular_vel
 SCS_TELEMETRY_TRUCK_CHANNEL_wipers = ScsChannel('truck.wipers', SCS_VALUE_TYPE_bool, False)
 SCS_TELEMETRY_TRUCK_CHANNEL_world_placement = ScsChannel('truck.world.placement', SCS_VALUE_TYPE_dplacement, False)
 
+SCS_TELEMETRY_EVENT_invalid = ScsEvent(0)
+SCS_TELEMETRY_EVENT_frame_start = ScsEvent(1)
+SCS_TELEMETRY_EVENT_frame_end = ScsEvent(2)
+SCS_TELEMETRY_EVENT_paused = ScsEvent(3)
+SCS_TELEMETRY_EVENT_started = ScsEvent(4)
+SCS_TELEMETRY_EVENT_configuration = ScsEvent(5)
+SCS_TELEMETRY_EVENT_gameplay = ScsEvent(6)
+
+# Config event ids
 SCS_TELEMETRY_CONFIG_controls = 'controls'
 SCS_TELEMETRY_CONFIG_hshifter = 'hshifter'
 SCS_TELEMETRY_CONFIG_job = 'job'
@@ -158,6 +173,7 @@ SCS_TELEMETRY_CONFIG_substances = 'substances'
 SCS_TELEMETRY_CONFIG_trailer = 'trailer'
 SCS_TELEMETRY_CONFIG_truck = 'truck'
 
+# Config event attributes
 SCS_TELEMETRY_CONFIG_ATTRIBUTE_adblue_capacity = 'adblue.capacity'
 SCS_TELEMETRY_CONFIG_ATTRIBUTE_adblue_warning_factor = 'adblue.warning.factor'
 SCS_TELEMETRY_CONFIG_ATTRIBUTE_air_pressure_emergency = 'brake.air.pressure.emergency'

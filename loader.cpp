@@ -296,7 +296,7 @@ static PyMethodDef methods[] = {
 };
 
 static PyModuleDef module = {
-    PyModuleDef_HEAD_INIT, "telemetry", NULL, -1, methods,
+    PyModuleDef_HEAD_INIT, "_telemetry", NULL, -1, methods,
     NULL, NULL, NULL, NULL
 };
 
@@ -321,17 +321,19 @@ SCSAPI_RESULT scs_telemetry_init(const scs_u32_t version, const scs_telemetry_in
     log_loader("Initializing");
 
     // Set up path so the py file can be found
+    // Using Py_SetPath overwrites all Python paths, making next Py_Initialize
+    // fail, so using the simpler PYTHONPATH instead.
     std::string pwd = getenv("PWD");
-    std::string plugin_dir = pwd + "/plugins";
+    std::string plugin_dir = pwd + "/plugins/python";
     setenv("PYTHONPATH", plugin_dir.c_str(), 1);
     
-    PyImport_AppendInittab("telemetry", &pymod::create);
+    PyImport_AppendInittab("_telemetry", &pymod::create);
     
     Py_InitializeEx(0);
     PyEval_InitThreads();
 
     { // Make sure no pyhelp::PyObjRef ref counting happens after PyEval_SaveThread()
-        std::string python_module_name = "pyets2_telemetry";
+        std::string python_module_name = "pyets2lib.loader";
         pyhelp::PyObjRef py_module_name(PyUnicode_DecodeFSDefaultAndSize(
                                     python_module_name.c_str(),
                                     python_module_name.size()));
@@ -341,7 +343,7 @@ SCSAPI_RESULT scs_telemetry_init(const scs_u32_t version, const scs_telemetry_in
             return SCS_RESULT_generic_error;
         }
     
-        log_loader("Importing python module \"%s\"", python_module_name.c_str());
+        log_loader("Loading Python framework");
         // TODO: relative import. Use "level"
         py_module_.set(PyImport_Import(py_module_name.get()));
         if (py_module_.get() == nullptr) {
@@ -350,8 +352,7 @@ SCSAPI_RESULT scs_telemetry_init(const scs_u32_t version, const scs_telemetry_in
             Py_Finalize();
             return SCS_RESULT_generic_error;
         }
-        log_loader("Python module imported");
-        log_loader("Initialized");
+        log_loader("Python framework loaded");
 
         pyhelp::try_call_function(py_module_, "telemetry_init", "IssI",
                                   version,
