@@ -135,6 +135,6 @@ def try_call_method(logger, method, *args, **kwargs):
     except Exception as e:
         if not logger:
             logger = logging.getLogger(method.__module__)
-        scshelpers.log_exception(logger, e)
+        pyets2lib.scshelpers.log_exception(logger, e)
         return (False, ret)
     return (True, ret)
