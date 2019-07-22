@@ -37,6 +37,7 @@
 
 #include "pyhelp.hpp"
 #include "log.hpp"
+#include "version.hpp"
 
 static scs_telemetry_init_params_v101_t scs_params_;
 static pyhelp::PyObjRef py_module_;
@@ -337,6 +338,7 @@ SCSAPI_RESULT scs_telemetry_init(const scs_u32_t version, const scs_telemetry_in
 
     log_set_scs_log(scs_params_.common.log);
 
+    log_loader("Version: %s", VERSION);
     log_loader("Initializing");
 
     // Set up path so the py file can be found
