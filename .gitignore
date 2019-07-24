@@ -2,3 +2,4 @@
 __pycache__
 /test
 *.tar.bz2
+/eurotrucks2_telemetry_sdk_*

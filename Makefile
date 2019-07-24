@@ -17,32 +17,14 @@
 # along with pyets2_telemetry.  If not, see <https://www.gnu.org/licenses/>.
 #
 
-SDK_DIR=$(HOME)/src/eurotrucks2_telemetry_sdk_1.10
+SDK_DIR ?= eurotrucks2_telemetry_sdk_1.10
 
-SDK_HEADERS=\
-        $(SDK_DIR)/include/*.h \
-        $(SDK_DIR)/include/common/*.h \
-        $(SDK_DIR)/include/amtrucks/*.h \
-        $(SDK_DIR)/include/eurotrucks2/*.h
-
-SDK_INCLUDES=\
-        -I$(SDK_DIR)/include \
-        -I$(SDK_DIR)/include/common/ \
-        -I$(SDK_DIR)/include/amtrucks/ \
-        -I$(SDK_DIR)/include/eurotrucks2
-
-UNAME:= $(shell uname -s)
-
-ifeq ($(UNAME),Darwin)
-LIB_NAME_OPTION=-install_name
-else
-LIB_NAME_OPTION=-soname
-endif
+SDK_CFLAGS := -I$(SDK_DIR)/include
 
 PYTHON_CFLAGS := $(shell pkg-config --cflags python3)
 PYTHON_LDFLAGS := $(shell pkg-config --libs python3)
 
-CXXFLAGS := $(PYTHON_CFLAGS) -std=c++17 -fPIC -Wall -O2
+CXXFLAGS := $(SDK_CFLAGS) $(PYTHON_CFLAGS) -std=c++17 -fPIC -Wall -O2
 LDFLAGS := $(PYTHON_LDFLAGS)
 
 VERSION := $(shell cut -d '"' -f 2 version.hpp | sed 's/\./_/g')
@@ -61,11 +43,11 @@ TEST_SRCS := $(SRCS) test.cpp
 
 .DEFAULT_GOAL: $(LIBRARY)
 
-$(LIBRARY): $(SRCS) $(INCS) $(SDK_HEADERS)
-	g++ $(CXXFLAGS) -o $@ --shared -Wl,--no-allow-shlib-undefined -Wl,$(LIB_NAME_OPTION),$@ $(SDK_INCLUDES) $(SRCS) $(LDFLAGS)
+$(LIBRARY): $(SRCS) $(INCS)
+	g++ $(CXXFLAGS) -o $@ --shared -Wl,--no-allow-shlib-undefined -Wl,-soname,$@  $(SRCS) $(LDFLAGS)
 
-test: $(TEST_SRCS) $(SDK_HEADERS)
-	g++ $(CXXFLAGS) -g -o $@ $(SDK_INCLUDES) $(TEST_SRCS) $(LDFLAGS)
+test: $(TEST_SRCS)
+	g++ $(CXXFLAGS) -g -o $@ $(TEST_SRCS) $(LDFLAGS)
 
 .PHONY: install
 install: uninstall $(LIBRARY) $(PY_FILES)
