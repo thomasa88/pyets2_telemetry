@@ -337,8 +337,9 @@ SCSAPI_RESULT scs_telemetry_init(const scs_u32_t version, const scs_telemetry_in
     scs_params_ = *version_params;
 
     log_set_scs_log(scs_params_.common.log);
-
-    log_loader("Version: %s", VERSION);
+    log_loader("pyets2_telemetry %s", VERSION);
+    log_loader("Copyright 2019 Thomas Axelsson");
+    log_loader("License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>.");
     log_loader("Initializing");
 
     // Set up path so the py file can be found
