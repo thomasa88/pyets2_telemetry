@@ -14,7 +14,7 @@ pyets2_telemetry provides support for adding Python plug-ins to ETS2 ([Euro Truc
 >
 > E.g. [pyets2_telemetry_server](https://github.com/thomasa88/pyets2_telemetry_server) provides a telemetry server, compatible with [ETS2 Telemetry Web Server](https://github.com/Funbit/ets2-telemetry-server).
 
-Download the latest release from the [release page](https://github.com/thomasa88/pyets2_telemetry/releases) and unpack the archive in the ETS2 `plugins` directory (typically `"$HOME/.steam/steam/steamapps/common/Euro Truck Simulator 2/bin/linux_x64/plugins"`).
+Download the latest release archive (`.tar.bz2`) from the [release page](https://github.com/thomasa88/pyets2_telemetry/releases) and unpack it in the ETS2 `plugins` directory (typically `"$HOME/.steam/steam/steamapps/common/Euro Truck Simulator 2/bin/linux_x64/plugins"`).
 
 You can find the *plugins* directory in Steam, by right-clicking the game and selecting *Properties...* -> *LOCAL FILES* -> *BROWSE LOCAL FILES...* and then open the directories `bin/linux_64/plugins`. 
 
