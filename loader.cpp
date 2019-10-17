@@ -241,7 +241,7 @@ SCSAPI_VOID telemetry_event_cb(const scs_event_t event,
 namespace pymod {
 
 static PyObject *log(PyObject *self, PyObject *arg) {
-    char *message = PyUnicode_AsUTF8AndSize(arg, nullptr);
+    const char *message = PyUnicode_AsUTF8AndSize(arg, nullptr);
     if (message == nullptr) {
         PyErr_SetString(PyExc_TypeError, "Log message must be string");
         return nullptr;
